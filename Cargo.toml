@@ -1,6 +1,6 @@
 [package]
 name = "ips4o"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Jonathan Stites <mail@jonstites.com>"]
 edition = "2018"
 description = "When completed, this will be a Rust implementation of the ips4o sorting algorithm."
