@@ -3,6 +3,8 @@ name = "ips4o"
 version = "0.1.0"
 authors = ["Jonathan Stites <mail@jonstites.com>"]
 edition = "2018"
+description = "When completed, this will be a Rust implementation of the ips4o sorting algorithm."
+license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
