@@ -85,8 +85,22 @@ where T: GenData + Send + Ord, SortAlgo: Fn(&mut [T])
 }
 
 fn main() {
-    let sorter_label = "rayon::par_sort";
-    let parallelism = true;
-    benchmark::<i32, _>(&rayon::slice::ParallelSliceMut::par_sort, sorter_label, parallelism);
-    benchmark::<i64, _>(&rayon::slice::ParallelSliceMut::par_sort, sorter_label, parallelism);
+    {
+        let parallelism = true;
+        let sorter_label = "rayon::par_sort";
+        benchmark::<i32, _>(&rayon::slice::ParallelSliceMut::par_sort, sorter_label, parallelism);
+        benchmark::<i64, _>(&rayon::slice::ParallelSliceMut::par_sort, sorter_label, parallelism);
+    }
+    {
+        let parallelism = true;
+        let sorter_label = "rayon::par_sort_unstable";
+        benchmark::<i32, _>(&rayon::slice::ParallelSliceMut::par_sort_unstable, sorter_label, parallelism);
+        benchmark::<i64, _>(&rayon::slice::ParallelSliceMut::par_sort_unstable, sorter_label, parallelism);
+    }
+    {
+        let parallelism = true;
+        let sorter_label = "ips4o::par_sort_unstable";
+        benchmark::<i32, _>(&ips4o::par_sort_unstable, sorter_label, parallelism);
+        benchmark::<i64, _>(&ips4o::par_sort_unstable, sorter_label, parallelism);
+    }
 }

@@ -11,6 +11,7 @@ run:
 
 _sqlplot:
 	cp speed_plot_template speed.plot
+	awk -f add_plots.awk >> speed.plot
 	sqlplot-tools speed.plot
 
 _gnuplot:

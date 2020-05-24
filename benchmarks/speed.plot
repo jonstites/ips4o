@@ -25,23 +25,22 @@ set style line 1 lt 1 lc 2 lw 1
 set style line 2 lt 1 lc 3 lw 1
 set style line 3 lt 1 lc 8 lw 1
 
-#SQL DELETE FROM stats WHERE LOG(2, size) < 10
-
-set title 'Random, i32'
-## MULTIPLOT(algo) SELECT LOG(2, size) AS x,
-## time / (size * log(2, size)) AS y,
-## MULTIPLOT
-## FROM stats WHERE dist = 'uniform' AND parallelism = 'true' AND type = 'i32'
+#SQL DELETE FROM stats WHERE LOG(2, size) < 5
+set title "uniform, i32" 
+## MULTIPLOT(algo) SELECT LOG(2, size) AS x, 
+## time / (size * log(2, size)) AS y, 
+## MULTIPLOT 
+## FROM stats 
+## WHERE dist = "uniform" AND parallelism = "true" AND type = "i32" 
 ## GROUP BY MULTIPLOT, size ORDER BY MULTIPLOT, size
 plot \
     'speed-data.txt' index 0 title "par_sort" noenhanced with linespoints
 
-
-set title 'Random, i64'
-## MULTIPLOT(algo) SELECT LOG(2, size) AS x,
-## time / (size * log(2, size)) AS y,
-## MULTIPLOT
-## FROM stats WHERE dist = 'uniform' AND parallelism = 'true' AND type = 'i64'
+set title "uniform, i64" 
+## MULTIPLOT(algo) SELECT LOG(2, size) AS x, 
+## time / (size * log(2, size)) AS y, 
+## MULTIPLOT 
+## FROM stats 
+## WHERE dist = "uniform" AND parallelism = "true" AND type = "i64" 
 ## GROUP BY MULTIPLOT, size ORDER BY MULTIPLOT, size
-plot \
-    'speed-data.txt' index 1 title "par_sort" noenhanced with linespoints
+
