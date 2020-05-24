@@ -1,54 +1,54 @@
-RESULT algo=rayon::par_sort dist=uniform size=1 iters=10 time=120.3 stddev=116.93679 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2 iters=10 time=81.2 stddev=32.935688 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4 iters=10 time=83.2 stddev=4.4676614 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8 iters=10 time=87.3 stddev=9.110983 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16 iters=10 time=95.4 stddev=25.597656 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=32 iters=10 time=87.2 stddev=6.660331 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=64 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=128 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=256 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=512 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=1024 iters=10 time=71.1 stddev=2.9816108 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2048 iters=10 time=72.3 stddev=5.9169245 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4096 iters=10 time=73.2 stddev=6.321393 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8192 iters=10 time=72.3 stddev=5.9169245 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16384 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=32768 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=65536 iters=10 time=88.1 stddev=6.0406957 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=131072 iters=10 time=81.1 stddev=2.9816108 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=262144 iters=10 time=90.2 stddev=11.838919 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=524288 iters=10 time=86.2 stddev=9.152048 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=1048576 iters=10 time=95.2 stddev=11.539496 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2097152 iters=10 time=98 stddev=84 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4194304 iters=10 time=72.3 stddev=6.245798 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8388608 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16777216 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=33554432 iters=10 time=72 stddev=6 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=67108864 iters=10 time=71 stddev=7 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=1 iters=10 time=102.2 stddev=62.66865 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2 iters=10 time=70.3 stddev=4.267318 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4 iters=10 time=71.4 stddev=3.2310994 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16 iters=10 time=70.3 stddev=4.4955535 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=32 iters=10 time=76 stddev=18 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=64 iters=10 time=73.1 stddev=9.3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=128 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=256 iters=10 time=71.3 stddev=6.972087 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=512 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=1024 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2048 iters=10 time=71.1 stddev=2.9816108 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4096 iters=10 time=71.3 stddev=6.8271513 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8192 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16384 iters=10 time=74.3 stddev=12.239688 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=32768 iters=10 time=72.4 stddev=6.216108 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=65536 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=131072 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=262144 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=524288 iters=10 time=69.1 stddev=5.593746 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=1048576 iters=10 time=71 stddev=3 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=2097152 iters=10 time=71.3 stddev=2.9342806 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=4194304 iters=10 time=72.2 stddev=5.9464283 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=8388608 iters=10 time=72 stddev=6 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=16777216 iters=10 time=71.2 stddev=2.9597301 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=33554432 iters=10 time=71.1 stddev=2.9816108 parallelism=true
-RESULT algo=rayon::par_sort dist=uniform size=67108864 iters=10 time=70 stddev=4.472136 parallelism=true
+RESULT algo=rayon::par_sort dist=uniform size=1 iters=10 time=72.1 stddev=96.29998 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=2 iters=10 time=54.2 stddev=32.596928 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=4 iters=10 time=83.1 stddev=19.557352 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=8 iters=10 time=168.4 stddev=17.2 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=16 iters=10 time=340.2 stddev=76.185036 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=32 iters=10 time=1223.2 stddev=274.7893 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=64 iters=10 time=2008.9 stddev=111.57101 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=128 iters=10 time=4088.6 stddev=597.4523 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=256 iters=10 time=8545.1 stddev=196.26842 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=512 iters=10 time=17794.6 stddev=197.52023 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=1024 iters=10 time=38123.6 stddev=2025.629 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=2048 iters=10 time=248051.3 stddev=204056.2 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=4096 iters=10 time=213978.4 stddev=57964.65 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=8192 iters=10 time=221328 stddev=90238.42 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=16384 iters=10 time=226803.4 stddev=14578.786 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=32768 iters=10 time=379600.9 stddev=21000.84 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=65536 iters=10 time=774096.4 stddev=165204.61 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=131072 iters=10 time=1438378.3 stddev=179390 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=262144 iters=10 time=2627998 stddev=327093.72 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=524288 iters=10 time=4864734.5 stddev=431764.13 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=1048576 iters=10 time=8843966 stddev=202484.7 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=2097152 iters=10 time=17927222 stddev=303616.44 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=4194304 iters=10 time=36985270 stddev=428737.5 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=8388608 iters=10 time=77070776 stddev=689973.75 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=16777216 iters=10 time=162575730 stddev=1135450.1 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=33554432 iters=10 time=336231940 stddev=3247734.3 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=67108864 iters=10 time=712074560 stddev=10776321 parallelism=true type=i32
+RESULT algo=rayon::par_sort dist=uniform size=1 iters=10 time=51.2 stddev=70.04828 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=2 iters=10 time=38 stddev=12.489996 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=4 iters=10 time=70 stddev=24.083189 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=8 iters=10 time=161.4 stddev=47.396626 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=16 iters=10 time=280.8 stddev=31.435013 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=32 iters=10 time=1341.3 stddev=252.07143 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=64 iters=10 time=2052.6 stddev=240.17628 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=128 iters=10 time=3960.5 stddev=470.47937 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=256 iters=10 time=9186.3 stddev=800.6574 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=512 iters=10 time=18799.4 stddev=1691.9945 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=1024 iters=10 time=40839.7 stddev=2545.3848 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=2048 iters=10 time=192719.3 stddev=70546.984 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=4096 iters=10 time=220682.9 stddev=43645.223 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=8192 iters=10 time=258998.6 stddev=81326.67 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=16384 iters=10 time=385444.7 stddev=216502.3 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=32768 iters=10 time=580665.9 stddev=406812.88 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=65536 iters=10 time=1035391.7 stddev=291566.72 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=131072 iters=10 time=1710050.8 stddev=170806.1 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=262144 iters=10 time=3203235.3 stddev=356500.22 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=524288 iters=10 time=5982106.5 stddev=312168 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=1048576 iters=10 time=11501960 stddev=344124.88 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=2097152 iters=10 time=22376566 stddev=289570.16 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=4194304 iters=10 time=50622400 stddev=1259296.5 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=8388608 iters=10 time=104697120 stddev=3938699.3 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=16777216 iters=10 time=213409010 stddev=3138129 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=33554432 iters=10 time=449125900 stddev=12301007 parallelism=true type=i64
+RESULT algo=rayon::par_sort dist=uniform size=67108864 iters=10 time=961103500 stddev=19186952 parallelism=true type=i64
