@@ -6,6 +6,8 @@ use rayon::prelude::*;
 use std::time::{Duration, Instant};
 use std::ops::Add;
 
+use partial_function;
+
 use ips4o;
 
 fn mean(data: &[Duration]) -> Option<f32>
@@ -22,7 +24,16 @@ fn mean(data: &[Duration]) -> Option<f32>
 trait GenData {
 
     fn uniform(rng: &mut XorShiftRng, len: usize) -> Vec<Self>
-        where Self: Sized;
+    where Self: Sized;
+
+    fn near_sort(rng: &mut XorShiftRng, len: usize, fraction: f32) -> Vec<Self>
+    where Self: Sized;
+
+    fn near_sort50(rng: &mut XorShiftRng, len: usize) -> Vec<Self>
+    where Self: Sized 
+    {
+        Self::near_sort(rng, len, 0.50)
+    }
 
     fn label() -> String;
 }
@@ -31,6 +42,17 @@ impl GenData for i32 {
 
     fn uniform(rng: &mut XorShiftRng, len: usize) -> Vec<Self> {
         rng.sample_iter(&Standard).take(len).collect()
+    }
+
+    fn near_sort(rng: &mut XorShiftRng, len: usize, fraction: f32) -> Vec<Self>
+    where Self: Sized
+    {
+        let mut v: Vec<Self> = (0..len).map(|i| i as Self).collect();
+
+        for i in (0..len).step_by((len as f32 / fraction) as usize) {
+            v[i] = rng.sample(&Standard);
+        }
+        v
     }
 
     fn label() -> String {
@@ -44,12 +66,23 @@ impl GenData for i64 {
         rng.sample_iter(&Standard).take(len).collect()
     }
 
+    fn near_sort(rng: &mut XorShiftRng, len: usize, fraction: f32) -> Vec<Self>
+    where Self: Sized
+    {
+        let mut v: Vec<Self> = (0..len).map(|i| i as Self).collect();
+
+        for i in (0..len).step_by((len as f32 / fraction) as usize) {
+            v[i] = rng.sample(&Standard);
+        }
+        v
+    }
+
     fn label() -> String {
         return "i64".to_string()
     }
 }
 
-fn run<T, SortAlgo, Dist>(mut sorter: SortAlgo, sorter_label: &str, dist: Dist, dist_label: &str, parallelism: bool) 
+fn run<T, SortAlgo, Dist>(sorter: SortAlgo, sorter_label: &str, dist: Dist, dist_label: &str, parallelism: bool) 
 where T: GenData + Send + Ord, SortAlgo: Fn(&mut [T]), Dist: Fn(&mut XorShiftRng, usize) -> Vec<T>
 {
     const MAX_LOG_N: usize = 26;
@@ -78,10 +111,11 @@ where T: GenData + Send + Ord, SortAlgo: Fn(&mut [T]), Dist: Fn(&mut XorShiftRng
     }
 }
 
-fn benchmark<T, SortAlgo>(mut sorter: SortAlgo, sorter_label: &str, parallelism: bool) 
-where T: GenData + Send + Ord, SortAlgo: Fn(&mut [T])
+fn benchmark<T, SortAlgo>(sorter: SortAlgo, sorter_label: &str, parallelism: bool) 
+where T: GenData + Send + Ord, SortAlgo: Fn(&mut [T]) + Clone
 {
-    run(sorter, sorter_label, T::uniform, "uniform", parallelism);
+    run(sorter.clone(), sorter_label, T::uniform, "uniform", parallelism);
+    run(sorter.clone(), sorter_label, T::near_sort50, "sort50", parallelism);
 }
 
 fn main() {
@@ -102,5 +136,23 @@ fn main() {
         let sorter_label = "ips4o::par_sort_unstable";
         benchmark::<i32, _>(&ips4o::par_sort_unstable, sorter_label, parallelism);
         benchmark::<i64, _>(&ips4o::par_sort_unstable, sorter_label, parallelism);
+    }
+    {
+        let parallelism = false;
+        let sorter_label = "std::sort";
+        benchmark::<i32, _>(&(<[i32]>::sort), sorter_label, parallelism);
+        benchmark::<i64, _>(&(<[i64]>::sort), sorter_label, parallelism);
+    }
+    {
+        let parallelism = false;
+        let sorter_label = "std::sort_unstable";
+        benchmark::<i32, _>(&(<[i32]>::sort_unstable), sorter_label, parallelism);
+        benchmark::<i64, _>(&(<[i64]>::sort_unstable), sorter_label, parallelism);
+    }
+    {
+        let parallelism = false;
+        let sorter_label = "ips4o::sort_unstable";
+        benchmark::<i32, _>(&ips4o::sort_unstable, sorter_label, parallelism);
+        benchmark::<i64, _>(&ips4o::sort_unstable, sorter_label, parallelism);
     }
 }

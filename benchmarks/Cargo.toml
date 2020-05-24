@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 ips4o = { path = "../ips4o" }
+partial_function = "0.5"
 rand = "0.7"
 rand_xorshift = "0.2"
 rayon = "1.3"
