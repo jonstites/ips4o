@@ -2,6 +2,9 @@ use std::cmp;
 use std::mem;
 use std::ptr;
 
+extern crate rand;
+use rand::distributions::{Distribution, Uniform};
+
 /// When dropped, copies from `src` into `dest`.
 struct CopyOnDrop<T> {
     src: *mut T,
@@ -57,20 +60,54 @@ where
     }
 }
 
+unsafe fn get_and_increment<T>(ptr: &mut *mut T) -> *mut T {
+    let old = *ptr;
+    *ptr = ptr.offset(1);
+    old
+}
+
 fn sample<T>(v: &mut [T], num_samples: usize)
-where T: Ord,
 {
-    
+    // benchmark - maybe replace with XorShift?
+    // TODO: notice the way break_patterns is implemented
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::from(0..v.len());
+
+    for dest in 0..num_samples {
+        let src = uniform.sample(&mut rng);
+        v.swap(src, dest);
+    }
 }
 
 fn build_classifier<T, F>(v: &mut [T], is_less: &mut F)
 where F: FnMut(&T, &T) -> bool,
 {
+    let len = v.len();
+    // TODO: This is a silly hack for prototyping.
+    let num_buckets = 256_usize.min(len);
+    
+    let oversampling_factor: f64 = 1.0_f64.min(0.2 * (len >> 1) as f64);
+    let step = 1_usize.max(oversampling_factor as usize);
+    let num_samples = step * num_buckets - 1;
+    sample(v, num_samples);
+    
+    // TODO: recurse(&mut v[0..num_samples], is_less);
+    insertion_sort(&mut v[..num_samples], is_less);
+
+    // Choose splitters (i.e. equally-spaced samples) to determine buckets
+    let mut splitters = Vec::with_capacity(len / 2).as_mut_ptr();
+
+    for splitter_index in ((step - 1)..num_samples).step_by(step) {
+        unsafe {
+            ptr::copy_nonoverlapping(v.as_mut_ptr(), splitters, 1);
+            splitters = get_and_increment(&mut splitters);
+        }
+    }
     
 
 }
 
-pub fn recurse<T, F>(v: &mut [T], is_less: &mut F)
+fn recurse<T, F>(v: &mut [T], is_less: &mut F)
 where F: FnMut(&T, &T) -> bool,
 {
     // pdqsort has 20, ips4o is 16. benchmark.
