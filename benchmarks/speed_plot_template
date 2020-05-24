@@ -46,9 +46,5 @@ set title 'Random'
 ## MULTIPLOT
 ## FROM stats, temp_add WHERE dist = 'uniform' AND parallelism = 'true'
 ## GROUP BY MULTIPLOT, size ORDER BY MULTIPLOT, size
-plot \
-    'speed-data.txt' index 0 title "algo=rayon::par_sort,a=-1" with linespoints, \
-    'speed-data.txt' index 1 title "algo=rayon::par_sort,a=0" with linespoints, \
-    'speed-data.txt' index 2 title "algo=rayon::par_sort,a=1" with linespoints
 
 # SQL DROP TABLE temp_add
