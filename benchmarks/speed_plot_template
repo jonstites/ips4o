@@ -15,14 +15,15 @@ set grid xtics ytics
 
 set key top left
 
-set yrange [0:4]
+set yrange [0:5]
 
 set xlabel 'Item Count [log_2(n)]'
-set ylabel 'Run Time / n log_2n [Nanoseconds]'
+set ylabel 'Run Time / n log_2n / [Nanoseconds]'
 
 
 set style line 1 lt 1 lc 2 lw 1
 set style line 2 lt 1 lc 3 lw 1
 set style line 3 lt 1 lc 8 lw 1
 
-#SQL DELETE FROM stats WHERE LOG(2, size) < 5
+
+#SQL DELETE FROM stats WHERE LOG(2, size) < 2

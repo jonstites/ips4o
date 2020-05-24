@@ -1,7 +1,7 @@
 BEGIN { 
     p_n=split("true false", p); 
     t_n=split("i32 i64", t); 
-    d_n=split("uniform sort50", d); 
+    d_n=split("uniform sort50 sort90 sort99 asc desc dupsq dup8 mod8 ones organ merge", d); 
     for (p_i=1;p_i<=p_n;++p_i) 
     for (t_i=1;t_i<=t_n;++t_i) 
     for (d_i=1;d_i<=d_n;++d_i) 
