@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 rand = "0.7"
+rayon-core = "1.7"
 
 [dev-dependencies]
 rand_xorshift = "0.2"

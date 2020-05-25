@@ -1,13 +1,42 @@
 #![cfg_attr(feature = "unstable", feature(test))]
-
+#![feature(is_sorted)]
+use std::cmp::Ordering;
 
 mod sort;
 
-pub fn sort<T>(v: &mut [T])
-where T: Ord,
+
+pub fn par_sort_unstable<T>(v: &mut [T])
+where T: Ord + std::fmt::Debug + Clone,
 {
-    sort::sequential_sort(v,  |a, b| a.lt(b));    
+    sort::ips4o(v, T::lt);
 }
+/*
+pub fn par_sort_unstable_by<T, F>(v: &mut [T], compare: F)
+where
+    T: Clone,
+    F: Fn(&T, &T) -> Ordering + Sync,
+{
+    sort::ips4o(v, |a, b| {
+        compare(a, b) == Ordering::Less
+    });
+}
+
+pub fn par_sort_unstable_by_key<T, B, F>(v: &mut [T], f: F)
+where
+    T: Clone,
+    B: Ord,
+    F: Fn(&T) -> B + Sync,
+{
+    sort::ips4o(v, |a, b| f(a).lt(&f(b)));
+}*/
+
+
+pub fn sort_unstable<T>(v: &mut [T])
+where T: Ord + Clone + std::fmt::Debug,
+{
+    sort::ips4o(v,  T::lt);
+}
+
 
 #[cfg(test)]
 mod tests {
