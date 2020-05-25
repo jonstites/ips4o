@@ -1040,6 +1040,7 @@ mod quicksort {
 // TODO Hmmm - I don't want to have to manually keep these in sync
 const LOG_N_BUCKETS: usize = 8;
 const MAX_NUM_BUCKETS: usize = 256;
+const BLOCK_SIZE: usize = 512;
 
 fn sample<T>(v: &mut [T], num_samples: usize)
 {
@@ -1054,7 +1055,7 @@ fn sample<T>(v: &mut [T], num_samples: usize)
     }
 }
 
-fn classify<T, F>(classifier: &[T], value: T, is_less: &F, log_n_buckets: usize) -> usize
+fn classify<T, F>(classifier: &[T], value: &T, is_less: &F, log_n_buckets: usize) -> usize
 where 
     T: Clone + std::fmt::Debug + Ord,
     F: Fn(&T, &T) -> bool,
@@ -1062,7 +1063,7 @@ where
     let mut i = 0;
 
     for _ in 0..log_n_buckets {
-        i = (2 * i) + 1 + (value > classifier[i]) as usize;
+        i = (2 * i) + 1 + (value > &&classifier[i]) as usize;
         println!("value: {:?} i: {:?}", value, i);
     }
 
@@ -1109,6 +1110,37 @@ fn choose_sampling_number(len: usize) -> usize
     num_samples
 }
 
+fn locally_classify<T, F>(v: &mut [T], is_less: &F, classifier: &[T], num_buckets: usize, log_n_buckets: usize, block_size: usize, buffer: &mut [T], counts: &mut [usize])
+where 
+    T: Clone + std::fmt::Debug + Ord,
+    F: Fn(&T, &T) -> bool,
+{
+    // TODO remove allocations
+    let mut data_write_index = 0;
+    let mut buffer_write_indices = vec![0; num_buckets];
+
+
+    
+    for data_read_index in 0..v.len() {
+        // TODO remove bounds checking
+        let value = v[data_read_index].clone();
+        
+        let bucket_index = classify(classifier, &value, is_less, log_n_buckets);
+
+        if buffer_write_indices[bucket_index] == block_size {
+            for idx in 0..block_size {
+                v[data_write_index] = buffer[bucket_index * block_size + idx].clone();
+                data_write_index += 1;
+            }
+            buffer_write_indices[bucket_index] = 0;
+        }
+
+        buffer[bucket_index * block_size + buffer_write_indices[bucket_index]] = value;
+        buffer_write_indices[bucket_index] += 1;
+        counts[bucket_index] += 1;
+    }
+}
+
 // TODO maybe is_less doesn't need to be a reference.
 fn recurse<T, F>(v: &mut [T], is_less: &F)
 where 
@@ -1150,8 +1182,28 @@ where
         }
         // Local Classification
 
+        let mut block_buffer = Vec::new();
+        // safe, but stupid
+        for i in 0..(MAX_NUM_BUCKETS * BLOCK_SIZE) {
+            block_buffer.push(classifier[0].clone());
+        }
+        // write buffers
+        // count size of buckets
+        let mut counts = vec![0; MAX_NUM_BUCKETS];
+
+        // what a mouthful! 
+        // TODO rethink the parameters of this function
+        locally_classify(v, &is_less, &classifier, MAX_NUM_BUCKETS, LOG_N_BUCKETS, BLOCK_SIZE, &mut block_buffer, &mut counts);
+
+        // At this stage, the data is in a precarious state
+        // Some data is in the original slice. Some parts of the slice are effectively unallocated
+        // And some data exists only in the local buffers.
+        // Making this safe will be challenging!
+
         // Block Permutation
 
+            // move full blocks
+            // overflow block?
         // Cleanup
     }
 
@@ -1225,10 +1277,24 @@ mod tests {
     fn test_classify() {        
         let classifier = vec!(-2, -6, 2, -10, -4, 0, 4);
         
-        assert_eq!(0, classify(&classifier, -1000, &i32::lt, 3));
-        assert_eq!(7, classify(&classifier, 1000, &i32::lt, 3));
+        assert_eq!(0, classify(&classifier, &-1000, &i32::lt, 3));
+        assert_eq!(7, classify(&classifier, &1000, &i32::lt, 3));
 
-        assert_eq!(1, classify(&classifier, -8, &i32::lt, 3));
-        assert_eq!(5, classify(&classifier, 2, &i32::lt, 3));
+        assert_eq!(1, classify(&classifier, &-8, &i32::lt, 3));
+        assert_eq!(5, classify(&classifier, &2, &i32::lt, 3));
+    }
+
+    #[test]
+    fn test_locally_classify() {        
+        let classifier = vec!(-2, -6, 2, -10, -4, 0, 4);
+        let mut data = vec!(-20, 20, -19, -18, 19, 18, 1);
+
+        let expected = vec!(-20, -19, 20, 19, 19, 18, 1);
+        
+        let mut buffer = vec![0; 2 * 8];
+        let mut counts = vec![0; 8];
+
+        locally_classify(&mut data, &i32::lt, &classifier, 8, 3, 2, &mut buffer, &mut counts);
+        assert_eq!(expected, data);
     }
 }
