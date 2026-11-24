@@ -10,6 +10,9 @@
 
 mod inputs;
 
+/// `generic` or `native` (built with `-C target-cpu=native`); set by build.rs.
+const BUILD: &str = env!("BENCH_BUILD");
+
 use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -19,6 +22,9 @@ use inputs::{Distribution, Element, Pair, Record100, Rng};
 const USAGE: &str = "\
 usage: benchmarks [options]
 
+  --preset NAME      quick: 5 distributions, sizes 2^12..2^24 step 4, sorters
+                     ips4o,std_unstable,cpp_ips4o, min-time 0.5 (about 5 min for
+                     all types); full: the defaults below. Later options override.
   --types LIST       element types: u64,f64,pair,record100,string (default: u64)
   --dists LIST       distributions (default: all): uniform, exponential,
                      almost_sorted, root_dup, two_dup, eight_dup, sorted,
@@ -78,6 +84,23 @@ impl Options {
                     .map_err(|_| format!("{flag}: not a number: {v}"))
             };
             match flag.as_str() {
+                "--preset" => match value.as_str() {
+                    "quick" => {
+                        opts.dists = [
+                            Distribution::Uniform,
+                            Distribution::Exponential,
+                            Distribution::RootDup,
+                            Distribution::TwoDup,
+                            Distribution::AlmostSorted,
+                        ]
+                        .to_vec();
+                        opts.sorters = Some(list("ips4o,std_unstable,cpp_ips4o".into()));
+                        (opts.min_log, opts.max_log, opts.log_step) = (12, 24, 4);
+                        opts.min_time = Duration::from_secs_f64(0.5);
+                    }
+                    "full" => {}
+                    _ => return Err(format!("unknown preset: {value}")),
+                },
                 "--types" => opts.types = list(value),
                 "--dists" => {
                     opts.dists = list(value)
@@ -131,9 +154,10 @@ fn main() -> ExitCode {
     };
     writeln!(
         out,
-        "type,distribution,n,sorter,reps,median_ns,min_ns,ns_per_n_log_n"
+        "build,type,distribution,n,sorter,reps,median_ns,min_ns,ns_per_n_log_n"
     )
     .unwrap();
+    eprintln!("build: {BUILD}");
 
     for name in &opts.types {
         let result = match name.as_str() {
@@ -187,14 +211,16 @@ fn run<T: Element>(opts: &Options, out: &mut dyn Write) -> Result<(), String> {
                 .collect();
             let mut work = input.clone();
 
-            for sorter in &sorters {
-                let times = measure(opts, sorter, &input, &mut work)?;
+            for (sorter, times) in sorters
+                .iter()
+                .zip(measure(opts, &sorters, &input, &mut work)?)
+            {
                 let median = times[times.len() / 2];
                 let min = times[0];
                 let per = median as f64 / (n as f64 * (n as f64).log2());
                 writeln!(
                     out,
-                    "{},{},{n},{},{},{median},{min},{per:.4}",
+                    "{BUILD},{},{},{n},{},{},{median},{min},{per:.4}",
                     T::NAME,
                     dist.name(),
                     sorter.name,
@@ -215,30 +241,46 @@ fn run<T: Element>(opts: &Options, out: &mut dyn Write) -> Result<(), String> {
     Ok(())
 }
 
-/// Sorted list of timings in nanoseconds.
+/// Times every sorter on `input`, returning each one's timings (in
+/// nanoseconds, sorted).
+///
+/// Repetitions alternate between sorters (one rep of each, then the next
+/// round), so a burst of background activity lands on all of them alike and
+/// the comparison between them stays fair. Each sorter stops once it has
+/// `min_reps` reps and either `min_time` in total or `max_reps` reps.
 fn measure<T: Element>(
     opts: &Options,
-    sorter: &inputs::Sorter<T>,
+    sorters: &[inputs::Sorter<T>],
     input: &[T],
     work: &mut [T],
-) -> Result<Vec<u128>, String> {
-    let mut times = Vec::new();
-    let mut total = Duration::ZERO;
-    while times.len() < opts.min_reps || (total < opts.min_time && times.len() < opts.max_reps) {
-        work.clone_from_slice(input);
-        let start = Instant::now();
-        (sorter.sort)(std::hint::black_box(&mut *work));
-        let elapsed = start.elapsed();
-        if times.is_empty() && !work.is_sorted_by(|a, b| T::compare(a, b).is_le()) {
-            return Err(format!(
-                "{} produced unsorted output for {}",
-                sorter.name,
-                T::NAME
-            ));
+) -> Result<Vec<Vec<u128>>, String> {
+    let mut times = vec![Vec::new(); sorters.len()];
+    let mut totals = vec![Duration::ZERO; sorters.len()];
+    let wants_more = |times: &Vec<u128>, total: Duration| {
+        times.len() < opts.min_reps || (total < opts.min_time && times.len() < opts.max_reps)
+    };
+    while (0..sorters.len()).any(|i| wants_more(&times[i], totals[i])) {
+        for (i, sorter) in sorters.iter().enumerate() {
+            if !wants_more(&times[i], totals[i]) {
+                continue;
+            }
+            work.clone_from_slice(input);
+            let start = Instant::now();
+            (sorter.sort)(std::hint::black_box(&mut *work));
+            let elapsed = start.elapsed();
+            if times[i].is_empty() && !work.is_sorted_by(|a, b| T::compare(a, b).is_le()) {
+                return Err(format!(
+                    "{} produced unsorted output for {}",
+                    sorter.name,
+                    T::NAME
+                ));
+            }
+            totals[i] += elapsed;
+            times[i].push(elapsed.as_nanos());
         }
-        total += elapsed;
-        times.push(elapsed.as_nanos());
     }
-    times.sort_unstable();
+    for t in &mut times {
+        t.sort_unstable();
+    }
     Ok(times)
 }

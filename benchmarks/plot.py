@@ -4,7 +4,7 @@
 # ///
 """Plot benchmark CSVs from the runner.
 
-One figure per element type: a grid of small multiples, one panel per
+One figure per element type and build (generic or native): a grid of small multiples, one panel per
 distribution, x = input size, y = median ns / (n log2 n), one line per sorter.
 
     uv run benchmarks/plot.py results/u64.csv [more.csv ...] --out-dir results/
@@ -52,12 +52,14 @@ DISTRIBUTION_ORDER = [
 
 
 def load(paths):
-    # data[type][distribution][sorter] = [(n, ns_per_n_log_n)]
+    # data[figure][distribution][sorter] = [(n, ns_per_n_log_n)], one figure
+    # per type and build.
     data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for path in paths:
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
-                series = data[row["type"]][row["distribution"]][row["sorter"]]
+                figure = f"{row['type']}-{row.get('build', 'unknown')}"
+                series = data[figure][row["distribution"]][row["sorter"]]
                 series.append((int(row["n"]), float(row["ns_per_n_log_n"])))
     return data
 
