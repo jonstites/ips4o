@@ -46,8 +46,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  # Two jobs, so they run concurrently.
   miri:
-    name: Miri
+    name: Miri (sequential)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,19 +56,27 @@ jobs:
         with:
           components: miri
       - uses: Swatinem/rust-cache@v2
-      # Large-input tests are #[cfg_attr(miri, ignore)]; the tiny configs
-      # cover the same code paths.
-      - name: Miri (sequential, all checks)
-        # `par_sort` also skips the rayon-based doc examples.
-        run: cargo miri test --workspace -- --skip parallel --skip par_sort
+      # All of Miri's checks. Large-input tests are #[cfg_attr(miri,
+      # ignore)]; the tiny configs cover the same code paths. `par_sort`
+      # also skips the rayon-based doc examples.
+      - run: cargo miri test --workspace -- --skip parallel --skip par_sort
+
+  miri-parallel:
+    name: Miri (parallel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
       # rayon's internals trip both of Miri's aliasing models (Stacked
       # Borrows in crossbeam-epoch, Tree Borrows in rayon-core's scopes;
       # reproducible without ips4o), so the parallel tests run without
       # aliasing checks. Miri still checks data races, use-after-free,
       # out-of-bounds and uninitialized reads. Leak checks are off because
       # the test thread pool outlives main; the tests count drops instead.
-      - name: Miri (parallel)
-        run: cargo miri test --workspace -- parallel par_sort
+      - run: cargo miri test --workspace -- parallel par_sort
         env:
           MIRIFLAGS: -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks
 

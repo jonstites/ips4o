@@ -49,7 +49,8 @@ impl Config for EightBuckets {
 /// Input lengths to test: everything small, plus a few around powers of two.
 pub(crate) fn lengths() -> Vec<usize> {
     if cfg!(miri) {
-        (0..24).chain([31, 32, 33, 64, 100]).collect()
+        // Every length up to 9, then around powers of two.
+        (0..=9).chain([13, 15, 16, 17, 31, 33, 64, 100]).collect()
     } else {
         (0..=300).chain([511, 512, 513, 1000, 1024, 4097]).collect()
     }
