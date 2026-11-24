@@ -1,0 +1,10 @@
+[package]
+name = "ips4o"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "In-place (parallel) super scalar samplesort (IPS4o)"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
