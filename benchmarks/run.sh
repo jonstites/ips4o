@@ -7,12 +7,13 @@
 #   writes benchmarks/results/NAME-generic.csv and NAME-native.csv
 #
 # environment:
-#   BENCH_CPU=N        core to pin to (default: 2)
+#   BENCH_CPU=N        core(s) to pin to (default: 2); "all" for no pinning,
+#                      which parallel runs need
 #   BENCH_BUILDS=...   which builds to run (default: "generic native")
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 fi
 name=$1
@@ -34,5 +35,7 @@ for build in ${BENCH_BUILDS:-generic native}; do
         cargo build --quiet --release --manifest-path "$root/Cargo.toml" -p benchmarks --features cpp
     out=$results/$name-$build.csv
     echo "== $build -> $out" >&2
-    taskset -c "${BENCH_CPU:-2}" "$target/release/benchmarks" --out "$out" "$@" 2> >(tee "$results/$name-$build.log" >&2)
+    pin=(taskset -c "${BENCH_CPU:-2}")
+    [[ ${BENCH_CPU:-2} == all ]] && pin=()
+    "${pin[@]}" "$target/release/benchmarks" --out "$out" "$@" 2> >(tee "$results/$name-$build.log" >&2)
 done

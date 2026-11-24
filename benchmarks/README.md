@@ -12,14 +12,20 @@ and writes CSV, plus a script that plots it.
 | `std_stable` | Rust's `sort_by` (driftsort): stable, so a different contract |
 | `cpp_ips4o` | the original C++ IPS⁴o, sequential (`--features cpp`) |
 | `cpp_std_sort` | C++ `std::sort` (`--features cpp`) |
+| `rayon_par` | rayon's `par_sort_unstable_by` (parallel pdqsort) |
+| `cpp_ips4o_par` | the C++ IPS⁴o, parallel (`--features cpp`); its sorter and thread pool are created once and reused, like rayon's pool |
+
+Parallel sorters use `--threads` threads (default: all); the CSV records it,
+and `plot.py` puts parallel results in their own figures.
 
 The C++ sorters cover `u64`, `f64`, `pair` and `record100`. Strings are
 Rust-only.
 
 ## Running
 
-The C++ comparison needs the submodule, a C++17 compiler, and TBB's headers
-(the C++ IPS⁴o includes them even for its sequential sort):
+The C++ comparison needs the submodule, a C++17 compiler, and TBB (the C++
+IPS⁴o includes its headers even for the sequential sort, and the parallel sort
+links it):
 
 ```sh
 git submodule update --init
@@ -51,6 +57,8 @@ hours for all types, and each type can be run separately.
 BENCH_BUILDS=generic benchmarks/run.sh quick --preset quick --types u64,pair,record100,string
 # routine: native regression check
 BENCH_BUILDS=native benchmarks/run.sh quick --preset quick --types u64,string
+# parallel: don't pin to one core
+BENCH_CPU=all BENCH_BUILDS=generic benchmarks/run.sh par --preset parallel --types u64,string
 # milestone: one type at a time, both builds
 benchmarks/run.sh full-u64 --types u64 --max-log 28
 uv run benchmarks/plot.py benchmarks/results/quick-*.csv

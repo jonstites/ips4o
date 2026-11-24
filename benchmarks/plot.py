@@ -30,6 +30,11 @@ SORTERS = {
     "std_unstable": ("std sort_unstable", "#1baf7a", "-"),
     "cpp_std_sort": ("std::sort (C++)", "#eda100", "--"),
     "std_stable": ("std sort (stable)", "#e87ba4", "-"),
+    # Parallel sorters get their own figures; slots follow the same roles
+    # (ours, C++ IPS4o, Rust baseline).
+    "ips4o_par": ("ips4o par (Rust)", "#2a78d6", "-"),
+    "cpp_ips4o_par": ("IPS4o par (C++)", "#eb6834", "--"),
+    "rayon_par": ("rayon par_sort_unstable", "#1baf7a", "-"),
 }
 SURFACE = "#fcfcfb"
 TEXT_PRIMARY = "#0b0b0b"
@@ -59,6 +64,9 @@ def load(paths):
         with open(path, newline="") as f:
             for row in csv.DictReader(f):
                 figure = f"{row['type']}-{row.get('build', 'unknown')}"
+                threads = int(row.get("threads", 1))
+                if threads > 1:
+                    figure += f"-{threads}threads"
                 series = data[figure][row["distribution"]][row["sorter"]]
                 series.append((int(row["n"]), float(row["ns_per_n_log_n"])))
     return data
