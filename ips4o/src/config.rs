@@ -25,6 +25,12 @@ pub(crate) trait Config {
     /// Size of a block in bytes. Elements move between buffers and the input
     /// in blocks of `max(1, BLOCK_BYTES / size_of::<T>())` elements.
     const BLOCK_BYTES: usize;
+    /// The parallel sort partitions in parallel only if each thread gets at
+    /// least this many elements; smaller inputs (and buckets) are sorted
+    /// sequentially. (Default 2^12: on 16 threads, 2^14 and 2^16 left
+    /// mid-sized inputs sequential, and 2^10 made nested parallel steps on
+    /// small buckets cost more than they saved.)
+    const PAR_MIN_STRIPE: usize;
 }
 
 /// The defaults. These are the C++ implementation's values (`kBaseCaseSize`
@@ -40,6 +46,7 @@ impl Config for DefaultConfig {
     const OVERSAMPLING_PERCENT: usize = 20;
     const EQUAL_BUCKETS_THRESHOLD: usize = 5;
     const BLOCK_BYTES: usize = 2048;
+    const PAR_MIN_STRIPE: usize = 1 << 12;
 }
 
 /// Rejects nonsensical configurations at compile time.
@@ -49,6 +56,7 @@ pub(crate) const fn validate<C: Config>() {
     assert!(C::BUCKET_TARGET_SIZE >= 1);
     assert!(C::BASE_CASE_SIZE >= C::BUCKET_TARGET_SIZE);
     assert!(C::EQUAL_BUCKETS_THRESHOLD >= 1);
+    assert!(C::PAR_MIN_STRIPE >= 1);
 }
 
 /// Number of elements per block.

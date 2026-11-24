@@ -42,7 +42,7 @@ use crate::util::is_less;
 /// `data[..len]` must be initialized and valid for reads and writes, and
 /// `scratch` must have been prepared for `classifier`'s bucket count and
 /// `len` elements, with empty buffers.
-pub(super) unsafe fn classify<T, F>(
+pub(crate) unsafe fn classify<T, F>(
     data: *mut T,
     len: usize,
     classifier: &Classifier<T>,

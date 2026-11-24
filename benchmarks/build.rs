@@ -35,12 +35,17 @@ fn build_cpp() {
         .file("cpp/shim.cpp")
         .include(include)
         .define("NDEBUG", None)
+        .flag("-pthread")
         .opt_level(3)
         .warnings(false);
     if native {
         build.flag("-march=native");
     }
     build.compile("ips4o_shim");
+    // The parallel C++ IPS4o uses TBB's concurrent queue and C++ threads.
+    println!("cargo:rustc-link-lib=tbb");
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:rustc-link-lib=atomic");
 
     println!("cargo:rerun-if-changed=cpp/shim.cpp");
     println!("cargo:rerun-if-changed=third_party/ips4o/include");

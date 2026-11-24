@@ -24,13 +24,16 @@ usage: benchmarks [options]
 
   --preset NAME      quick: 5 distributions, sizes 2^12..2^24 step 4, sorters
                      ips4o,std_unstable,cpp_ips4o, min-time 0.5 (about 5 min for
-                     all types); full: the defaults below. Later options override.
+                     all types); parallel: the same for the parallel sorters,
+                     sizes 2^16..2^28; full: the defaults below. Later options
+                     override.
   --types LIST       element types: u64,f64,pair,record100,string (default: u64)
   --dists LIST       distributions (default: all): uniform, exponential,
                      almost_sorted, root_dup, two_dup, eight_dup, sorted,
                      reverse_sorted, all_equal
   --sorters LIST     only these sorters (default: all): ips4o, std_unstable,
-                     std_stable, cpp_ips4o, cpp_std_sort
+                     std_stable, cpp_ips4o, cpp_std_sort, and the parallel
+                     ones: ips4o_par, rayon_par, cpp_ips4o_par
   --min-log N        smallest size 2^N (default: 10)
   --max-log N        largest size 2^N (default: 26)
   --log-step N       step between sizes, in powers of two (default: 2)
@@ -39,6 +42,7 @@ usage: benchmarks [options]
   --min-reps N       at least this many repetitions (default: 3)
   --max-reps N       at most this many repetitions (default: 50)
   --seed N           input seed (default: 1)
+  --threads N        threads for the parallel sorters (default: all)
   --out PATH         write CSV here instead of stdout
 ";
 
@@ -54,6 +58,7 @@ struct Options {
     min_reps: usize,
     max_reps: usize,
     seed: u64,
+    threads: usize,
     out: Option<String>,
 }
 
@@ -71,6 +76,7 @@ impl Options {
             min_reps: 3,
             max_reps: 50,
             seed: 1,
+            threads: std::thread::available_parallelism().map_or(1, |n| n.get()),
             out: None,
         };
         let list = |s: String| s.split(',').map(str::to_owned).collect::<Vec<_>>();
@@ -98,6 +104,19 @@ impl Options {
                         (opts.min_log, opts.max_log, opts.log_step) = (12, 24, 4);
                         opts.min_time = Duration::from_secs_f64(0.5);
                     }
+                    "parallel" => {
+                        opts.dists = [
+                            Distribution::Uniform,
+                            Distribution::Exponential,
+                            Distribution::RootDup,
+                            Distribution::TwoDup,
+                            Distribution::AlmostSorted,
+                        ]
+                        .to_vec();
+                        opts.sorters = Some(list("ips4o_par,rayon_par,cpp_ips4o_par".into()));
+                        (opts.min_log, opts.max_log, opts.log_step) = (16, 28, 4);
+                        opts.min_time = Duration::from_secs_f64(0.5);
+                    }
                     "full" => {}
                     _ => return Err(format!("unknown preset: {value}")),
                 },
@@ -122,6 +141,7 @@ impl Options {
                 "--min-reps" => opts.min_reps = number(&value)?.max(1) as usize,
                 "--max-reps" => opts.max_reps = number(&value)?.max(1) as usize,
                 "--seed" => opts.seed = number(&value)?,
+                "--threads" => opts.threads = number(&value)?.max(1) as usize,
                 "--out" => opts.out = Some(value),
                 _ => return Err(format!("unknown option: {flag}")),
             }
@@ -142,6 +162,17 @@ fn main() -> ExitCode {
         }
     };
 
+    // One thread count for every parallel sorter: rayon's global pool and
+    // the C++ sorter's pool both get it.
+    inputs::THREADS.store(opts.threads, std::sync::atomic::Ordering::Relaxed);
+    if let Err(e) = rayon::ThreadPoolBuilder::new()
+        .num_threads(opts.threads)
+        .build_global()
+    {
+        eprintln!("error: cannot build thread pool: {e}");
+        return ExitCode::FAILURE;
+    }
+
     let mut out: Box<dyn Write> = match &opts.out {
         Some(path) => match std::fs::File::create(path) {
             Ok(file) => Box::new(io::BufWriter::new(file)),
@@ -154,7 +185,7 @@ fn main() -> ExitCode {
     };
     writeln!(
         out,
-        "build,type,distribution,n,sorter,reps,median_ns,min_ns,ns_per_n_log_n"
+        "build,type,distribution,n,sorter,threads,reps,median_ns,min_ns,ns_per_n_log_n"
     )
     .unwrap();
     eprintln!("build: {BUILD}");
@@ -220,10 +251,11 @@ fn run<T: Element>(opts: &Options, out: &mut dyn Write) -> Result<(), String> {
                 let per = median as f64 / (n as f64 * (n as f64).log2());
                 writeln!(
                     out,
-                    "{BUILD},{},{},{n},{},{},{median},{min},{per:.4}",
+                    "{BUILD},{},{},{n},{},{},{},{median},{min},{per:.4}",
                     T::NAME,
                     dist.name(),
                     sorter.name,
+                    if sorter.parallel { opts.threads } else { 1 },
                     times.len()
                 )
                 .unwrap();

@@ -7,4 +7,10 @@ description = "In-place (parallel) super scalar samplesort (IPS4o)"
 license = "MIT OR Apache-2.0"
 publish = false
 
+[features]
+default = ["parallel"]
+# The parallel sorts (`par_sort_unstable*`), built on rayon.
+parallel = ["dep:rayon"]
+
 [dependencies]
+rayon = { version = "1", optional = true }

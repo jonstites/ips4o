@@ -31,8 +31,8 @@
 //! [`AbortOnUnwind`], so an internal bug aborts the process instead of
 //! unwinding past half-moved data.
 
-mod cleanup;
-mod local;
+pub(crate) mod cleanup;
+pub(crate) mod local;
 mod permute;
 mod scratch;
 
@@ -44,7 +44,7 @@ use crate::classifier::{BucketLayout, Classifier, select_splitters};
 use crate::config::{Config, block_size};
 use crate::util::{AbortOnUnwind, Rng, base_case_sort, is_less};
 
-pub(crate) use scratch::Scratch;
+pub(crate) use scratch::{Scratch, uninit_vec};
 
 /// Sorts `v` in place.
 pub(crate) fn sort<T, F, C>(v: &mut [T], compare: &mut F, seed: u64)
@@ -59,10 +59,20 @@ where
     if sort_if_presorted(v, compare) {
         return;
     }
-    let mut rng = Rng::new(seed);
-    let mut scratch = Scratch::new(block_size::<T, C>());
     // See `reference::sort_with_config` for the reasoning.
     let depth_limit = 2 * v.len().ilog2();
+    sort_unchecked::<T, F, C>(v, compare, seed, depth_limit);
+}
+
+/// The sort after the entry checks (zero-sized types, presorted input):
+/// partitions recursively, with at most `depth_limit` levels.
+pub(crate) fn sort_unchecked<T, F, C>(v: &mut [T], compare: &mut F, seed: u64, depth_limit: u32)
+where
+    F: FnMut(&T, &T) -> Ordering,
+    C: Config,
+{
+    let mut rng = Rng::new(seed);
+    let mut scratch = Scratch::new(block_size::<T, C>());
     recurse::<T, F, C>(v, compare, &mut rng, &mut scratch, depth_limit);
 }
 
@@ -73,7 +83,7 @@ where
 /// only a few comparisons. A non-increasing input is reversed, which is fine
 /// even with equal elements because the sort is unstable. Returns whether
 /// `v` is now sorted. Panic-safe: only compares, and reverses with swaps.
-fn sort_if_presorted<T, F>(v: &mut [T], compare: &mut F) -> bool
+pub(crate) fn sort_if_presorted<T, F>(v: &mut [T], compare: &mut F) -> bool
 where
     F: FnMut(&T, &T) -> Ordering,
 {
@@ -214,15 +224,15 @@ where
 /// Owns the splitters while they are out of the slice. If dropped (that is,
 /// if the comparator panics during local classification), it writes them
 /// back into the slots they came from.
-struct SplitterGuard<T> {
-    classifier: ManuallyDrop<Classifier<T>>,
+pub(crate) struct SplitterGuard<T> {
+    pub(crate) classifier: ManuallyDrop<Classifier<T>>,
     /// The `m` uninitialized slots at the front of the slice.
-    slots: *mut T,
+    pub(crate) slots: *mut T,
 }
 
 impl<T> SplitterGuard<T> {
     /// Disarms the guard, handing over the classifier.
-    fn into_inner(self) -> Classifier<T> {
+    pub(crate) fn into_inner(self) -> Classifier<T> {
         let mut this = ManuallyDrop::new(self);
         // SAFETY: `this` is never dropped, so the classifier is taken once.
         unsafe { ManuallyDrop::take(&mut this.classifier) }

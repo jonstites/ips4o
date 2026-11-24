@@ -5,6 +5,11 @@
 
 use std::cmp::Ordering;
 use std::fmt::Write;
+use std::sync::atomic::AtomicUsize;
+#[cfg(feature = "cpp")]
+use std::sync::atomic::Ordering::Relaxed;
+
+use rayon::slice::ParallelSliceMut;
 
 /// SplitMix64.
 pub struct Rng(u64);
@@ -126,8 +131,14 @@ impl Distribution {
 /// A sort under test.
 pub struct Sorter<T> {
     pub name: &'static str,
+    /// Uses [`THREADS`] threads rather than one.
+    pub parallel: bool,
     pub sort: fn(&mut [T]),
 }
+
+/// Thread count for the parallel sorters, set once from `--threads`. Rayon's
+/// global pool is built with the same count.
+pub static THREADS: AtomicUsize = AtomicUsize::new(1);
 
 /// An element type the runner can benchmark.
 pub trait Element: Clone + 'static {
@@ -173,15 +184,28 @@ macro_rules! rust_sorters {
         vec![
             Sorter::<$t> {
                 name: "ips4o",
+                parallel: false,
                 sort: |v| ips4o::sort_unstable_by(v, $cmp),
             },
             Sorter::<$t> {
                 name: "std_unstable",
+                parallel: false,
                 sort: |v| v.sort_unstable_by($cmp),
             },
             Sorter::<$t> {
                 name: "std_stable",
+                parallel: false,
                 sort: |v| v.sort_by($cmp),
+            },
+            Sorter::<$t> {
+                name: "ips4o_par",
+                parallel: true,
+                sort: |v| ips4o::par_sort_unstable_by(v, $cmp),
+            },
+            Sorter::<$t> {
+                name: "rayon_par",
+                parallel: true,
+                sort: |v| v.par_sort_unstable_by($cmp),
             },
         ]
     }};
@@ -190,33 +214,44 @@ macro_rules! rust_sorters {
 /// The C++ sorters for a type with a shim (see cpp/shim.cpp).
 #[cfg(feature = "cpp")]
 macro_rules! cpp_sorters {
-    ($t:ty, $ips4o:ident, $std_sort:ident) => {{
+    ($t:ty, $ips4o:ident, $std_sort:ident, $ips4o_par:ident) => {{
         unsafe extern "C" {
             fn $ips4o(data: *mut $t, len: usize);
             fn $std_sort(data: *mut $t, len: usize);
+            fn $ips4o_par(data: *mut $t, len: usize, threads: i32);
         }
         vec![
             Sorter::<$t> {
                 name: "cpp_ips4o",
+                parallel: false,
                 // SAFETY: the shim sorts exactly `len` elements in place, with
                 // the same element layout and order as the Rust type.
                 sort: |v| unsafe { $ips4o(v.as_mut_ptr(), v.len()) },
             },
             Sorter::<$t> {
                 name: "cpp_std_sort",
+                parallel: false,
                 // SAFETY: as above.
                 sort: |v| unsafe { $std_sort(v.as_mut_ptr(), v.len()) },
+            },
+            Sorter::<$t> {
+                name: "cpp_ips4o_par",
+                parallel: true,
+                // SAFETY: as above.
+                sort: |v| unsafe {
+                    $ips4o_par(v.as_mut_ptr(), v.len(), THREADS.load(Relaxed) as i32)
+                },
             },
         ]
     }};
 }
 
 macro_rules! all_sorters {
-    ($t:ty, $cmp:expr, $ips4o:ident, $std_sort:ident) => {{
+    ($t:ty, $cmp:expr, $ips4o:ident, $std_sort:ident, $ips4o_par:ident) => {{
         #[allow(unused_mut)]
         let mut sorters = rust_sorters!($t, $cmp);
         #[cfg(feature = "cpp")]
-        sorters.extend(cpp_sorters!($t, $ips4o, $std_sort));
+        sorters.extend(cpp_sorters!($t, $ips4o, $std_sort, $ips4o_par));
         sorters
     }};
 }
@@ -230,7 +265,13 @@ impl Element for u64 {
         a.cmp(b)
     }
     fn sorters() -> Vec<Sorter<Self>> {
-        all_sorters!(u64, u64::cmp, cpp_ips4o_u64, cpp_std_sort_u64)
+        all_sorters!(
+            u64,
+            u64::cmp,
+            cpp_ips4o_u64,
+            cpp_std_sort_u64,
+            cpp_ips4o_par_u64
+        )
     }
 }
 
@@ -245,7 +286,13 @@ impl Element for f64 {
         a.total_cmp(b)
     }
     fn sorters() -> Vec<Sorter<Self>> {
-        all_sorters!(f64, f64::total_cmp, cpp_ips4o_f64, cpp_std_sort_f64)
+        all_sorters!(
+            f64,
+            f64::total_cmp,
+            cpp_ips4o_f64,
+            cpp_std_sort_f64,
+            cpp_ips4o_par_f64
+        )
     }
 }
 
@@ -261,7 +308,13 @@ impl Element for Pair {
         a.cmp(b)
     }
     fn sorters() -> Vec<Sorter<Self>> {
-        all_sorters!(Pair, Pair::cmp, cpp_ips4o_pair, cpp_std_sort_pair)
+        all_sorters!(
+            Pair,
+            Pair::cmp,
+            cpp_ips4o_pair,
+            cpp_std_sort_pair,
+            cpp_ips4o_par_pair
+        )
     }
 }
 
@@ -284,7 +337,8 @@ impl Element for Record100 {
             Record100,
             Record100::cmp,
             cpp_ips4o_record100,
-            cpp_std_sort_record100
+            cpp_std_sort_record100,
+            cpp_ips4o_par_record100
         )
     }
 }

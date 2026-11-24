@@ -1,8 +1,8 @@
 // C ABI wrappers around the C++ IPS4o and std::sort, for the Rust benchmark
 // runner. Element layouts must match the #[repr(C)] types in src/inputs.rs.
 //
-// Compiled without -pthread, so _REENTRANT is undefined and IPS4o's parallel
-// code (which needs TBB) is left out.
+// Compiled with -pthread, which defines _REENTRANT and enables IPS4o's
+// parallel code (linked against TBB).
 
 #include <algorithm>
 #include <cstddef>
@@ -35,12 +35,20 @@ inline bool operator<(const Record100& x, const Record100& y) {
 
 }  // namespace
 
-#define SORTERS(T, NAME)                                                  \
-    extern "C" void cpp_ips4o_##NAME(T* data, std::size_t len) noexcept { \
-        ips4o::sort(data, data + len);                                    \
-    }                                                                     \
-    extern "C" void cpp_std_sort_##NAME(T* data, std::size_t len) noexcept { \
-        std::sort(data, data + len);                                      \
+// The parallel sorter (and its thread pool) is created on first use and then
+// reused, like rayon's global pool. Creating it per call would charge thread
+// start-up to every sort. The first call's thread count sticks.
+#define SORTERS(T, NAME)                                                      \
+    extern "C" void cpp_ips4o_##NAME(T* data, std::size_t len) noexcept {     \
+        ips4o::sort(data, data + len);                                        \
+    }                                                                         \
+    extern "C" void cpp_std_sort_##NAME(T* data, std::size_t len) noexcept {  \
+        std::sort(data, data + len);                                          \
+    }                                                                         \
+    extern "C" void cpp_ips4o_par_##NAME(T* data, std::size_t len,           \
+                                         int threads) noexcept {             \
+        static auto sorter = ips4o::parallel::make_sorter<T*>(threads);       \
+        sorter(data, data + len);                                             \
     }
 
 SORTERS(std::uint64_t, u64)

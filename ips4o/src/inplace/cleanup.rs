@@ -78,9 +78,9 @@ pub(super) unsafe fn cleanup<T>(
 }
 
 /// Up to two runs of uninitialized slots in `data`, filled in order.
-struct Holes<T> {
-    data: *mut T,
-    ranges: [Range<usize>; 2],
+pub(crate) struct Holes<T> {
+    pub(crate) data: *mut T,
+    pub(crate) ranges: [Range<usize>; 2],
 }
 
 impl<T> Holes<T> {
@@ -90,7 +90,7 @@ impl<T> Holes<T> {
     ///
     /// `src[..count]` must be initialized, must not overlap the holes, and is
     /// moved from. The holes must be uninitialized slots of `data`.
-    unsafe fn fill(&mut self, mut src: *const T, mut count: usize) {
+    pub(crate) unsafe fn fill(&mut self, mut src: *const T, mut count: usize) {
         for range in &mut self.ranges {
             let n = count.min(range.len());
             // SAFETY: per the contract, `n` initialized source elements move
@@ -104,7 +104,7 @@ impl<T> Holes<T> {
         assert_eq!(count, 0, "more elements than holes");
     }
 
-    fn is_full(&self) -> bool {
+    pub(crate) fn is_full(&self) -> bool {
         self.ranges.iter().all(Range::is_empty)
     }
 }
@@ -124,7 +124,7 @@ impl<T> Holes<T> {
 /// `base[..num_splitters]` must be uninitialized, followed by the
 /// partitioned data with bucket sizes from `bucket_starts`. `splitters` must
 /// be the `num_splitters` splitters in sorted order.
-pub(super) unsafe fn reinsert_splitters<T>(
+pub(crate) unsafe fn reinsert_splitters<T>(
     base: *mut T,
     num_splitters: usize,
     bucket_starts: &[usize],
