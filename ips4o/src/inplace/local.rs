@@ -62,7 +62,6 @@ where
         write: 0,
         read: 0,
     };
-    let bucket_sizes = &mut scratch.bucket_sizes;
     let block_ids = &mut scratch.block_ids;
     let mut is_less = is_less(compare);
 
@@ -75,7 +74,6 @@ where
 
         // From here to the end of the iteration nothing can panic once
         // elements start moving: every index is checked before the first copy.
-        bucket_sizes[bucket] += 1;
         // SAFETY: `bucket < num_buckets`, so this is inside the buffers.
         let buffer = unsafe { buffers.add(bucket * block_size) };
         if state.fill[bucket] == block_size {
@@ -99,6 +97,14 @@ where
     let written = state.write;
     // Success: the buffers stay full for the next phases.
     mem::forget(state);
+
+    // Bucket sizes, computed once here rather than counted per element:
+    // every element is either in a flushed block or in its bucket's buffer.
+    let bucket_sizes = &mut scratch.bucket_sizes;
+    bucket_sizes.copy_from_slice(&scratch.buffer_fill);
+    for &id in &scratch.block_ids[..written / block_size] {
+        bucket_sizes[id as usize] += block_size;
+    }
     written
 }
 

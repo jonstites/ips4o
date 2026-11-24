@@ -135,8 +135,13 @@ impl<T> Classifier<T> {
         let log_buckets = self.layout.log_buckets;
         let mut b = 1;
         for _ in 0..log_buckets {
+            // Before step `k`, `b` is in `[2^k, 2^(k+1))` whatever `is_less`
+            // returned, and `k < L`, so `b - 1 < 2^L - 1 = tree.len()`.
+            debug_assert!(b - 1 < self.tree.len());
+            // SAFETY: as above, `b - 1` is in bounds.
+            let splitter = unsafe { self.tree.get_unchecked(b - 1) };
             // Go right iff splitter < x, so leaves hold `s_j < x <= s_{j+1}`.
-            b = 2 * b + is_less(&self.tree[b - 1], x) as usize;
+            b = 2 * b + is_less(splitter, x) as usize;
         }
         let leaf = b - (1 << log_buckets);
 
