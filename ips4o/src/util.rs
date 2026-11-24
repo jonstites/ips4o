@@ -2,6 +2,8 @@
 
 use std::cmp::Ordering;
 use std::hash::{BuildHasher, RandomState};
+use std::io::Write;
+use std::mem;
 
 /// SplitMix64. Fast, tiny, and good enough for sampling.
 pub(crate) struct Rng(u64);
@@ -50,6 +52,31 @@ where
     F: FnMut(&T, &T) -> Ordering,
 {
     v.sort_unstable_by(compare);
+}
+
+/// Aborts the process if dropped, which only happens while unwinding: the
+/// normal path calls [`AbortOnUnwind::defuse`].
+///
+/// Wraps phases that only move memory. They don't call user code, so they
+/// can only panic on an internal bug (a failed assertion). If one did panic
+/// mid-move, unwinding would drop elements that also exist elsewhere, or
+/// that are uninitialized. Aborting is the only safe response.
+pub(crate) struct AbortOnUnwind;
+
+impl AbortOnUnwind {
+    pub(crate) fn defuse(self) {
+        mem::forget(self);
+    }
+}
+
+impl Drop for AbortOnUnwind {
+    fn drop(&mut self) {
+        let _ = writeln!(
+            std::io::stderr(),
+            "ips4o: internal invariant violated while moving elements; aborting"
+        );
+        std::process::abort();
+    }
 }
 
 #[cfg(test)]

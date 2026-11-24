@@ -22,6 +22,9 @@ pub(crate) trait Config {
     /// this many adjacent equal pairs (capped at half the splitter count, so
     /// small trees can still detect heavy duplication).
     const EQUAL_BUCKETS_THRESHOLD: usize;
+    /// Size of a block in bytes. Elements move between buffers and the input
+    /// in blocks of `max(1, BLOCK_BYTES / size_of::<T>())` elements.
+    const BLOCK_BYTES: usize;
 }
 
 /// The defaults. These are the C++ implementation's values (`kBaseCaseSize`
@@ -36,14 +39,21 @@ impl Config for DefaultConfig {
     const BUCKET_TARGET_SIZE: usize = 16;
     const OVERSAMPLING_PERCENT: usize = 20;
     const EQUAL_BUCKETS_THRESHOLD: usize = 5;
+    const BLOCK_BYTES: usize = 2048;
 }
 
 /// Rejects nonsensical configurations at compile time.
 pub(crate) const fn validate<C: Config>() {
-    assert!(C::LOG_MAX_BUCKETS >= 1 && C::LOG_MAX_BUCKETS <= 16);
+    // At most 2^16 - 1 buckets (with equality buckets), so ids fit in a u16.
+    assert!(C::LOG_MAX_BUCKETS >= 1 && C::LOG_MAX_BUCKETS <= 15);
     assert!(C::BUCKET_TARGET_SIZE >= 1);
     assert!(C::BASE_CASE_SIZE >= C::BUCKET_TARGET_SIZE);
     assert!(C::EQUAL_BUCKETS_THRESHOLD >= 1);
+}
+
+/// Number of elements per block.
+pub(crate) fn block_size<T, C: Config>() -> usize {
+    (C::BLOCK_BYTES / size_of::<T>().max(1)).max(1)
 }
 
 /// Chooses `L` (the step partitions into `2^L` buckets) for `n` elements.
