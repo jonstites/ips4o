@@ -66,32 +66,23 @@ where
     let mut is_less = is_less(compare);
 
     while state.read < len {
-        // SAFETY: `read < len` and the element at `read` has not moved yet.
-        let x = unsafe { &*data.add(state.read) };
-        // The only call into user code. Nothing has moved for this element
-        // yet, so if it panics the guard's view of the state is exact.
-        let bucket = classifier.classify(x, &mut is_less);
-
-        // From here to the end of the iteration nothing can panic once
-        // elements start moving: every index is checked before the first copy.
-        // SAFETY: `bucket < num_buckets`, so this is inside the buffers.
-        let buffer = unsafe { buffers.add(bucket * block_size) };
-        if state.fill[bucket] == block_size {
-            block_ids[state.write / block_size] = bucket as u16;
-            // SAFETY: the holes `[write, read)` number as many as the
-            // buffered elements, of which this buffer alone has
-            // `block_size`. So the block fits, and the buffer's elements
-            // move into uninitialized slots.
-            unsafe { ptr::copy_nonoverlapping(buffer, data.add(state.write), block_size) };
-            state.write += block_size;
-            state.fill[bucket] = 0;
+        // Classify a batch, or a single element at the tail. This is the
+        // only call into user code, and nothing in the batch moves until all
+        // of it is classified, so if it panics the guard's view is exact.
+        if len - state.read >= BATCH {
+            // SAFETY: the `BATCH` elements from `read` on have not moved.
+            let xs: [&T; BATCH] = std::array::from_fn(|i| unsafe { &*data.add(state.read + i) });
+            for bucket in classifier.classify_batch(xs, &mut is_less) {
+                // SAFETY: `bucket` comes from the classifier, and the
+                // element at `read` is the next one of the batch.
+                unsafe { state.place(bucket, block_ids) };
+            }
+        } else {
+            // SAFETY: `read < len` and the element at `read` has not moved.
+            let bucket = classifier.classify(unsafe { &*data.add(state.read) }, &mut is_less);
+            // SAFETY: as above.
+            unsafe { state.place(bucket, block_ids) };
         }
-        let fill = state.fill[bucket];
-        // SAFETY: the buffer has room (`fill < block_size`); the element
-        // moves out of `data`, and `read += 1` turns its slot into a hole.
-        unsafe { ptr::copy_nonoverlapping(data.add(state.read), buffer.add(fill), 1) };
-        state.fill[bucket] = fill + 1;
-        state.read += 1;
     }
 
     let written = state.write;
@@ -108,6 +99,10 @@ where
     written
 }
 
+/// Elements classified together; see `Classifier::classify_batch`. The C++
+/// implementation uses 7.
+const BATCH: usize = 8;
+
 /// The live state of local classification. Dropping it (only on unwind)
 /// empties every buffer into the holes `[write, read)`.
 struct Guard<'a, T> {
@@ -117,6 +112,41 @@ struct Guard<'a, T> {
     fill: &'a mut [usize],
     write: usize,
     read: usize,
+}
+
+impl<T> Guard<'_, T> {
+    /// Moves the element at `read` into `bucket`'s buffer, first writing the
+    /// buffer back to `data` as a block if it is full.
+    ///
+    /// Cannot panic once an element has moved: both indexing operations come
+    /// before the first copy.
+    ///
+    /// # Safety
+    ///
+    /// `bucket < self.fill.len()`, `read < len`, and the element at `read`
+    /// has not moved.
+    #[inline(always)]
+    unsafe fn place(&mut self, bucket: usize, block_ids: &mut [u16]) {
+        let block_size = self.block_size;
+        // SAFETY: `bucket < num_buckets`, so this is inside the buffers.
+        let buffer = unsafe { self.buffers.add(bucket * block_size) };
+        if self.fill[bucket] == block_size {
+            block_ids[self.write / block_size] = bucket as u16;
+            // SAFETY: the holes `[write, read)` number as many as the
+            // buffered elements, of which this buffer alone has
+            // `block_size`. So the block fits, and the buffer's elements
+            // move into uninitialized slots.
+            unsafe { ptr::copy_nonoverlapping(buffer, self.data.add(self.write), block_size) };
+            self.write += block_size;
+            self.fill[bucket] = 0;
+        }
+        let fill = self.fill[bucket];
+        // SAFETY: the buffer has room (`fill < block_size`); the element
+        // moves out of `data`, and `read += 1` turns its slot into a hole.
+        unsafe { ptr::copy_nonoverlapping(self.data.add(self.read), buffer.add(fill), 1) };
+        self.fill[bucket] = fill + 1;
+        self.read += 1;
+    }
 }
 
 impl<T> Drop for Guard<'_, T> {
