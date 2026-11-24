@@ -1,0 +1,19 @@
+[package]
+name = "benchmarks"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Benchmark runner comparing ips4o with std and the C++ IPS4o"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[features]
+# Compare against the C++ IPS4o and std::sort. Needs the git submodule
+# (`git submodule update --init`) and a C++17 compiler.
+cpp = ["dep:cc"]
+
+[dependencies]
+ips4o = { path = "../ips4o" }
+
+[build-dependencies]
+cc = { version = "1", optional = true }

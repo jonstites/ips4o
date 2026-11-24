@@ -58,3 +58,21 @@ jobs:
       # Large-input tests are #[cfg_attr(miri, ignore)]; the tiny configs
       # cover the same code paths.
       - run: cargo miri test --workspace
+
+  benchmarks:
+    name: Benchmarks build (with C++)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libtbb-dev
+      - run: cargo clippy -p benchmarks --features cpp --all-targets
+      # Smoke run: every sorter checks its output, so this catches layout or
+      # ordering mismatches between the Rust types and the C++ shim.
+      - run: >
+          cargo run -p benchmarks --release --features cpp --
+          --types u64,f64,pair,record100,string --max-log 14
+          --min-time 0 --min-reps 1 --max-reps 1 > /dev/null
