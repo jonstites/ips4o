@@ -42,7 +42,7 @@ use std::ptr;
 
 use crate::classifier::{BucketLayout, Classifier, select_splitters};
 use crate::config::{Config, block_size};
-use crate::util::{AbortOnUnwind, Rng, base_case_sort};
+use crate::util::{AbortOnUnwind, Rng, base_case_sort, is_less};
 
 pub(crate) use scratch::Scratch;
 
@@ -56,11 +56,38 @@ where
     if mem::size_of::<T>() == 0 || v.len() < 2 {
         return;
     }
+    if sort_if_presorted(v, compare) {
+        return;
+    }
     let mut rng = Rng::new(seed);
     let mut scratch = Scratch::new(block_size::<T, C>());
     // See `reference::sort_with_config` for the reasoning.
     let depth_limit = 2 * v.len().ilog2();
     recurse::<T, F, C>(v, compare, &mut rng, &mut scratch, depth_limit);
+}
+
+/// Handles input that is already sorted, or sorted in reverse, in O(n).
+///
+/// The first and last elements decide which order to check for, and the
+/// scan stops at the first pair out of that order, so unsorted input costs
+/// only a few comparisons. A non-increasing input is reversed, which is fine
+/// even with equal elements because the sort is unstable. Returns whether
+/// `v` is now sorted. Panic-safe: only compares, and reverses with swaps.
+fn sort_if_presorted<T, F>(v: &mut [T], compare: &mut F) -> bool
+where
+    F: FnMut(&T, &T) -> Ordering,
+{
+    let mut is_less = is_less(compare);
+    let n = v.len();
+    if is_less(&v[n - 1], &v[0]) {
+        if v.windows(2).all(|w| !is_less(&w[0], &w[1])) {
+            v.reverse();
+            return true;
+        }
+    } else if v.windows(2).all(|w| !is_less(&w[1], &w[0])) {
+        return true;
+    }
+    false
 }
 
 fn recurse<T, F, C>(

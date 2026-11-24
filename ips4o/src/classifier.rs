@@ -132,22 +132,53 @@ impl<T> Classifier<T> {
     where
         F: FnMut(&T, &T) -> bool,
     {
-        let log_buckets = self.layout.log_buckets;
-        let mut b = 1;
-        for _ in 0..log_buckets {
-            // Go right iff splitter < x, so leaves hold `s_j < x <= s_{j+1}`.
-            b = 2 * b + is_less(&self.tree[b - 1], x) as usize;
-        }
-        let leaf = b - (1 << log_buckets);
+        let [bucket] = self.classify_batch([x], is_less);
+        bucket
+    }
 
-        if self.layout.equal_buckets {
-            // We already know x <= s_{leaf+1}; it is equal iff !(x < s_{leaf+1}).
-            let rank = leaf + 1;
-            let equal = rank <= self.tree.len() && !is_less(x, self.splitter(rank));
-            2 * leaf + equal as usize
-        } else {
-            leaf
+    /// Classifies `N` elements at once, walking their trees in lockstep.
+    /// Each walk is a chain of dependent loads (level `k + 1` needs level
+    /// `k`'s result), so interleaving independent walks lets the CPU overlap
+    /// them. Same results as `N` calls to [`Classifier::classify`]; only the
+    /// order of comparisons differs.
+    #[inline]
+    pub(crate) fn classify_batch<F, const N: usize>(
+        &self,
+        xs: [&T; N],
+        is_less: &mut F,
+    ) -> [usize; N]
+    where
+        F: FnMut(&T, &T) -> bool,
+    {
+        let log_buckets = self.layout.log_buckets;
+        let mut b = [1usize; N];
+        for _ in 0..log_buckets {
+            for (b, x) in b.iter_mut().zip(xs) {
+                // Before step `k`, `b` is in `[2^k, 2^(k+1))` whatever
+                // `is_less` returned, and `k < L`, so
+                // `b - 1 < 2^L - 1 = tree.len()`.
+                debug_assert!(*b - 1 < self.tree.len());
+                // SAFETY: as above, `b - 1` is in bounds.
+                let splitter = unsafe { self.tree.get_unchecked(*b - 1) };
+                // Go right iff splitter < x, so leaves hold
+                // `s_j < x <= s_{j+1}`.
+                *b = 2 * *b + is_less(splitter, x) as usize;
+            }
         }
+
+        let mut buckets = [0; N];
+        for ((bucket, b), x) in buckets.iter_mut().zip(b).zip(xs) {
+            let leaf = b - (1 << log_buckets);
+            *bucket = if self.layout.equal_buckets {
+                // We know x <= s_{leaf+1}; it is equal iff !(x < s_{leaf+1}).
+                let rank = leaf + 1;
+                let equal = rank <= self.tree.len() && !is_less(x, self.splitter(rank));
+                2 * leaf + equal as usize
+            } else {
+                leaf
+            };
+        }
+        buckets
     }
 
     /// Consumes the classifier, returning the splitters in sorted order.

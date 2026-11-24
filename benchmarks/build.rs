@@ -1,6 +1,18 @@
 fn main() {
+    // Tell the runner how it was built, so every CSV row records it.
+    let build = if native_cpu() { "native" } else { "generic" };
+    println!("cargo:rustc-env=BENCH_BUILD={build}");
+
     #[cfg(feature = "cpp")]
     build_cpp();
+}
+
+/// Whether the Rust code is being compiled with `-C target-cpu=native`.
+fn native_cpu() -> bool {
+    std::env::var("CARGO_ENCODED_RUSTFLAGS")
+        .unwrap_or_default()
+        .split('\x1f')
+        .any(|flag| flag.contains("target-cpu=native"))
 }
 
 /// Compiles the C++ shim. Uses `-march=native` exactly when the Rust code is
@@ -14,10 +26,7 @@ fn build_cpp() {
         panic!("C++ IPS4o not found; run `git submodule update --init`");
     }
 
-    let rustflags = std::env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
-    let native = rustflags
-        .split('\x1f')
-        .any(|flag| flag.contains("target-cpu=native"));
+    let native = native_cpu();
 
     let mut build = cc::Build::new();
     build

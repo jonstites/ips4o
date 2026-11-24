@@ -26,13 +26,41 @@ git submodule update --init
 sudo apt install libtbb-dev
 ```
 
-Build with `-C target-cpu=native`; the build script then compiles the C++ with
-`-march=native` too, so both sides are optimized alike:
+### Two builds: generic and native
+
+Results depend on how the code is compiled, sometimes a lot: auto-vectorization
+for AVX-512 once made a change 75% slower in a native build while it was 15%
+faster in a generic one. So we benchmark two builds:
+
+- **generic** (primary): default flags, what users of the crate get. Run the
+  full sweep.
+- **native**: `-C target-cpu=native`, with the C++ built with `-march=native`
+  to match. Run a smaller sweep as a regression check.
+
+`run.sh` builds both into separate target directories and runs them pinned to
+one core (`BENCH_CPU`, default 2). Every CSV row records its build.
+
+Use the **quick preset** for routine checks: five distributions, sizes 2¹²
+to 2²⁴, and the three sorters that matter for tuning (about 5 minutes for all
+types). Keep **full sweeps** (all distributions and sorters, up to 2²⁸) for
+milestones, ideally while you are away from the machine; they take about 1.5
+hours for all types, and each type can be run separately.
 
 ```sh
-RUSTFLAGS="-C target-cpu=native" cargo run -p benchmarks --release --features cpp -- \
-    --types u64 --out benchmarks/results/u64.csv
-uv run benchmarks/plot.py benchmarks/results/u64.csv
+# routine: generic, all types
+BENCH_BUILDS=generic benchmarks/run.sh quick --preset quick --types u64,pair,record100,string
+# routine: native regression check
+BENCH_BUILDS=native benchmarks/run.sh quick --preset quick --types u64,string
+# milestone: one type at a time, both builds
+benchmarks/run.sh full-u64 --types u64 --max-log 28
+uv run benchmarks/plot.py benchmarks/results/quick-*.csv
+```
+
+For a single build without the script, the build script compiles the C++ with
+`-march=native` exactly when Rust gets `-C target-cpu=native`:
+
+```sh
+cargo run -p benchmarks --release --features cpp -- --types u64 --out benchmarks/results/u64.csv
 ```
 
 `--help` lists every option. Useful ones: `--types`, `--dists`, `--sorters`,
@@ -46,9 +74,12 @@ Results go to `benchmarks/results/`, which is git-ignored.
 - **Go past the cache.** Sizes up to the L3 cache measure an in-cache sort,
   not the memory-bound regime IPS⁴o is designed for. With a 96 MiB L3,
   `u64` needs at least `--max-log 26` (512 MiB); `--max-log 28` is better.
-- **Pin and quiet the machine.** Run on one core (`taskset -c 2 ...`), close
-  other programs, and keep the CPU governor fixed if you can
-  (`cpupower frequency-set -g performance`).
+- **Pin the run.** `run.sh` pins to one core. If you can, also fix the CPU
+  governor (`cpupower frequency-set -g performance`).
+- **Light desktop use is fine.** Repetitions alternate between sorters, so a
+  burst of background work slows all of them alike and the comparison stays
+  fair; the median absorbs the rest. Avoid heavy work (compiles, video calls)
+  during a run.
 - **Same input for every sorter.** The runner already does this: each size
   and distribution is generated once from `--seed`.
 
