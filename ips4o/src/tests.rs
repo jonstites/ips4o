@@ -320,7 +320,10 @@ fn inplace_partition_matches_reference<C: Config>() {
 fn parallel_partition_matches_reference<C: Config>() {
     for stripes in 2..=5 {
         same_partition_as_reference::<Parallel, C>(|v, rng| {
-            pool().install(|| parallel::partition::<_, _, C>(v, &u64::cmp, rng, stripes))
+            pool().install(|| {
+                let scratch = parallel::ScratchPool::new(block_size::<u64, C>());
+                parallel::partition::<_, _, C>(v, &u64::cmp, rng, stripes, &scratch)
+            })
         });
     }
 }
