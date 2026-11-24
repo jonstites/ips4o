@@ -1,7 +1,8 @@
 //! In-place (parallel) super scalar samplesort (IPS⁴o), in Rust.
 //!
-//! **Status:** work in progress. The sequential in-place sort works; the
-//! parallel sort comes next. [`reference`] is a safe, out-of-place version
+//! **Status:** work in progress. Sequential (`sort_unstable*`) and parallel
+//! (`par_sort_unstable*`, with the default `parallel` feature) sorts work;
+//! tuning continues. [`reference`] is a safe, out-of-place version
 //! of the same algorithm, used for testing.
 //!
 //! Based on Axtmann, Witt, Ferizovic and Sanders, *In-Place Parallel Super
@@ -28,6 +29,8 @@ use std::cmp::Ordering;
 mod classifier;
 mod config;
 mod inplace;
+#[cfg(feature = "parallel")]
+mod parallel;
 pub mod reference;
 mod util;
 
@@ -80,4 +83,56 @@ where
     F: FnMut(&T) -> K,
 {
     sort_unstable_by(v, |a, b| key(a).cmp(&key(b)));
+}
+
+/// Sorts the slice in parallel, without preserving the order of equal
+/// elements. Runs on the current rayon thread pool.
+///
+/// Unlike rayon's `par_sort_unstable`, this needs `T: Sync` as well as
+/// `Send`: all threads classify elements against the same splitters at the
+/// same time.
+///
+/// ```
+/// let mut v: Vec<u64> = (0..1000).rev().collect();
+/// ips4o::par_sort_unstable(&mut v);
+/// assert!(v.is_sorted());
+/// ```
+#[cfg(feature = "parallel")]
+pub fn par_sort_unstable<T: Ord + Send + Sync>(v: &mut [T]) {
+    parallel::sort::<T, _, DefaultConfig>(v, &T::cmp, random_seed());
+}
+
+/// Sorts the slice in parallel with a comparator, without preserving the
+/// order of equal elements. See [`par_sort_unstable`].
+///
+/// ```
+/// let mut v = [5, 1, 4, 2, 3];
+/// ips4o::par_sort_unstable_by(&mut v, |a, b| b.cmp(a));
+/// assert_eq!(v, [5, 4, 3, 2, 1]);
+/// ```
+#[cfg(feature = "parallel")]
+pub fn par_sort_unstable_by<T, F>(v: &mut [T], compare: F)
+where
+    T: Send + Sync,
+    F: Fn(&T, &T) -> Ordering + Sync,
+{
+    parallel::sort::<T, _, DefaultConfig>(v, &compare, random_seed());
+}
+
+/// Sorts the slice in parallel with a key extraction function, without
+/// preserving the order of equal elements. See [`par_sort_unstable`].
+///
+/// ```
+/// let mut v = [-5i32, 1, -4, 2, 3];
+/// ips4o::par_sort_unstable_by_key(&mut v, |x| x.abs());
+/// assert_eq!(v, [1, 2, 3, -4, -5]);
+/// ```
+#[cfg(feature = "parallel")]
+pub fn par_sort_unstable_by_key<T, K, F>(v: &mut [T], key: F)
+where
+    T: Send + Sync,
+    K: Ord,
+    F: Fn(&T) -> K + Sync,
+{
+    par_sort_unstable_by(v, |a, b| key(a).cmp(&key(b)));
 }

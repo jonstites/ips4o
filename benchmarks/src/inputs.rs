@@ -198,6 +198,11 @@ macro_rules! rust_sorters {
                 sort: |v| v.sort_by($cmp),
             },
             Sorter::<$t> {
+                name: "ips4o_par",
+                parallel: true,
+                sort: |v| ips4o::par_sort_unstable_by(v, $cmp),
+            },
+            Sorter::<$t> {
                 name: "rayon_par",
                 parallel: true,
                 sort: |v| v.par_sort_unstable_by($cmp),

@@ -1,23 +1,34 @@
-//! The shared test suite, run against both the reference and the in-place
-//! sort under each test configuration, plus a differential test between them.
+//! The shared test suite, run against the reference, in-place and parallel
+//! sorts under each test configuration, plus differential tests against the
+//! reference.
 
 use std::cmp::Ordering;
 use std::mem;
+use std::sync::OnceLock;
+use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 
 use crate::config::{Config, DefaultConfig, block_size};
 use crate::test_util::*;
 use crate::util::Rng;
-use crate::{inplace, reference};
+use crate::{inplace, parallel, reference};
 
-/// A sort implementation under test.
+/// A sort implementation under test. Comparators are `Fn + Sync` and
+/// elements `Send + Sync`, so the same tests drive the parallel sort.
 trait Sorter {
     /// Whether the input still holds every element after a comparator panic.
     /// The reference sort consumes its `Vec`, so it drops them instead.
     const KEEPS_ELEMENTS_ON_PANIC: bool;
 
-    fn sort<T, F, C>(v: &mut Vec<T>, compare: &mut F, seed: u64)
+    /// Input lengths to test under config `C`.
+    fn lengths<C: Config>() -> Vec<usize> {
+        lengths()
+    }
+
+    fn sort<T, F, C>(v: &mut Vec<T>, compare: &F, seed: u64)
     where
-        F: FnMut(&T, &T) -> Ordering,
+        T: Send + Sync,
+        F: Fn(&T, &T) -> Ordering + Sync,
         C: Config;
 }
 
@@ -25,12 +36,13 @@ struct Reference;
 impl Sorter for Reference {
     const KEEPS_ELEMENTS_ON_PANIC: bool = false;
 
-    fn sort<T, F, C>(v: &mut Vec<T>, compare: &mut F, seed: u64)
+    fn sort<T, F, C>(v: &mut Vec<T>, compare: &F, seed: u64)
     where
-        F: FnMut(&T, &T) -> Ordering,
+        T: Send + Sync,
+        F: Fn(&T, &T) -> Ordering + Sync,
         C: Config,
     {
-        *v = reference::sort_with_config::<T, F, C>(mem::take(v), compare, seed);
+        *v = reference::sort_with_config::<T, _, C>(mem::take(v), &mut |a, b| compare(a, b), seed);
     }
 }
 
@@ -38,13 +50,54 @@ struct InPlace;
 impl Sorter for InPlace {
     const KEEPS_ELEMENTS_ON_PANIC: bool = true;
 
-    fn sort<T, F, C>(v: &mut Vec<T>, compare: &mut F, seed: u64)
+    fn sort<T, F, C>(v: &mut Vec<T>, compare: &F, seed: u64)
     where
-        F: FnMut(&T, &T) -> Ordering,
+        T: Send + Sync,
+        F: Fn(&T, &T) -> Ordering + Sync,
         C: Config,
     {
-        inplace::sort::<T, F, C>(v, compare, seed);
+        inplace::sort::<T, _, C>(v, &mut |a, b| compare(a, b), seed);
     }
+}
+
+/// The parallel sort on a 4-thread pool, so several stripes really run at
+/// once (the tiny configs make even small inputs partition in parallel).
+struct Parallel;
+impl Sorter for Parallel {
+    const KEEPS_ELEMENTS_ON_PANIC: bool = true;
+
+    /// Under Miri, every thread runs on one simulated core and each test
+    /// takes about half a minute, so test fewer lengths, and none for
+    /// configs that wouldn't partition in parallel at those lengths anyway
+    /// (the default config needs `2 * 2^16` elements).
+    fn lengths<C: Config>() -> Vec<usize> {
+        if !cfg!(miri) {
+            lengths()
+        } else if 2 * C::PAR_MIN_STRIPE > 64 {
+            Vec::new()
+        } else {
+            vec![0, 1, 2, 3, 5, 8, 13, 21, 34, 64]
+        }
+    }
+
+    fn sort<T, F, C>(v: &mut Vec<T>, compare: &F, seed: u64)
+    where
+        T: Send + Sync,
+        F: Fn(&T, &T) -> Ordering + Sync,
+        C: Config,
+    {
+        pool().install(|| parallel::sort::<T, F, C>(v, compare, seed));
+    }
+}
+
+fn pool() -> &'static rayon::ThreadPool {
+    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap()
+    })
 }
 
 fn by_key(a: &Tracked, b: &Tracked) -> Ordering {
@@ -52,19 +105,19 @@ fn by_key(a: &Tracked, b: &Tracked) -> Ordering {
 }
 
 fn sorts_patterns<S: Sorter, C: Config>() {
-    for n in lengths() {
+    for n in S::lengths::<C>() {
         for (name, input) in patterns(n, n as u64) {
             let mut expected = input.clone();
             expected.sort_unstable();
             let mut v = input;
-            S::sort::<_, _, C>(&mut v, &mut u64::cmp, n as u64);
+            S::sort::<_, _, C>(&mut v, &u64::cmp, n as u64);
             assert_eq!(v, expected, "pattern {name}, n={n}");
         }
     }
 }
 
 fn sorts_tracked_with_duplicates<S: Sorter, C: Config>() {
-    for n in lengths() {
+    for n in S::lengths::<C>() {
         for modulus in [1, 2, 3, 10, 1000] {
             let drops = DropCounter::new();
             let keys: Vec<u64> = random_keys(n, n as u64)
@@ -72,7 +125,7 @@ fn sorts_tracked_with_duplicates<S: Sorter, C: Config>() {
                 .map(|k| k % modulus)
                 .collect();
             let mut v = tracked(&keys, &drops);
-            S::sort::<_, _, C>(&mut v, &mut by_key, n as u64);
+            S::sort::<_, _, C>(&mut v, &by_key, n as u64);
             assert_sorted_permutation(&v, &keys);
             drop(v);
             assert_eq!(drops.get(), n, "n={n} modulus={modulus}");
@@ -81,20 +134,20 @@ fn sorts_tracked_with_duplicates<S: Sorter, C: Config>() {
 }
 
 /// The comparator mutates elements through `&T` (frees a `Box` held in a
-/// `Cell`). If the sort ever compared against a bitwise copy of an element
+/// `Mutex`). If the sort ever compared against a bitwise copy of an element
 /// while the original was still live, this would double-free, and Miri would
 /// catch it.
 fn survives_interior_mutation<S: Sorter, C: Config>() {
-    for n in lengths() {
+    for n in S::lengths::<C>() {
         let drops = DropCounter::new();
         let keys = random_keys(n, n as u64 ^ 0xabc);
         let mut v = tracked(&keys, &drops);
-        let mut evil = |a: &Tracked, b: &Tracked| {
-            drop(a.scratch.take());
-            b.scratch.set(Some(Box::new(b.key)));
+        let evil = |a: &Tracked, b: &Tracked| {
+            drop(a.scratch.lock().unwrap().take());
+            *b.scratch.lock().unwrap() = Some(Box::new(b.key));
             by_key(a, b)
         };
-        S::sort::<_, _, C>(&mut v, &mut evil, n as u64);
+        S::sort::<_, _, C>(&mut v, &evil, n as u64);
         assert_sorted_permutation(&v, &keys);
         drop(v);
         assert_eq!(drops.get(), n);
@@ -104,20 +157,19 @@ fn survives_interior_mutation<S: Sorter, C: Config>() {
 /// Panics at various points, including in the middle of local
 /// classification. The in-place sort must leave a full permutation behind.
 fn comparator_panics<S: Sorter, C: Config>() {
-    for n in lengths().into_iter().filter(|&n| n > 0).step_by(7) {
+    for n in S::lengths::<C>().into_iter().filter(|&n| n > 0).step_by(7) {
         let keys = random_keys(n, n as u64 ^ 0x5eed);
         for panic_at in [0, 1, n / 3, n / 2, n, 2 * n, 3 * n] {
             let drops = DropCounter::new();
             let mut v = tracked(&keys, &drops);
-            let mut calls = 0;
-            let mut compare = |a: &Tracked, b: &Tracked| {
-                if calls == panic_at {
+            let calls = AtomicUsize::new(0);
+            let compare = |a: &Tracked, b: &Tracked| {
+                if calls.fetch_add(1, SeqCst) == panic_at {
                     test_panic();
                 }
-                calls += 1;
                 by_key(a, b)
             };
-            let result = catch_test_panic(|| S::sort::<_, _, C>(&mut v, &mut compare, n as u64));
+            let result = catch_test_panic(|| S::sort::<_, _, C>(&mut v, &compare, n as u64));
             match result {
                 // Not enough comparisons happened to hit `panic_at`.
                 Ok(()) => assert_sorted_permutation(&v, &keys),
@@ -134,14 +186,15 @@ fn comparator_panics<S: Sorter, C: Config>() {
 /// (it is allowed to), and so may we. Either way, no element may be lost or
 /// duplicated.
 fn garbage_comparator<S: Sorter, C: Config>() {
-    for n in lengths().into_iter().step_by(3) {
+    for n in S::lengths::<C>().into_iter().step_by(3) {
         let keys = random_keys(n, n as u64);
         let drops = DropCounter::new();
         let mut v = tracked(&keys, &drops);
-        let mut rng = Rng::new(n as u64);
+        let calls = AtomicU64::new(n as u64);
         let orderings = [Ordering::Less, Ordering::Equal, Ordering::Greater];
-        let mut garbage = |_: &Tracked, _: &Tracked| orderings[rng.below(3)];
-        let result = catch_any_panic(|| S::sort::<_, _, C>(&mut v, &mut garbage, n as u64));
+        let garbage =
+            |_: &Tracked, _: &Tracked| orderings[Rng::new(calls.fetch_add(1, SeqCst)).below(3)];
+        let result = catch_any_panic(|| S::sort::<_, _, C>(&mut v, &garbage, n as u64));
         if result.is_ok() || S::KEEPS_ELEMENTS_ON_PANIC {
             assert_permutation(&v, n);
         }
@@ -155,14 +208,15 @@ fn garbage_comparator<S: Sorter, C: Config>() {
 /// input sinks into one bucket at every level.
 fn all_equal_input_is_linear<S: Sorter>() {
     let n = 50_000;
-    let mut comparisons = 0usize;
-    let mut compare = |a: &u64, b: &u64| {
-        comparisons += 1;
+    let comparisons = AtomicUsize::new(0);
+    let compare = |a: &u64, b: &u64| {
+        comparisons.fetch_add(1, SeqCst);
         a.cmp(b)
     };
     let mut v = vec![7u64; n];
-    S::sort::<_, _, DefaultConfig>(&mut v, &mut compare, 0);
+    S::sort::<_, _, DefaultConfig>(&mut v, &compare, 0);
     assert_eq!(v.len(), n);
+    let comparisons = comparisons.into_inner();
     assert!(
         comparisons < 12 * n,
         "{comparisons} comparisons for {n} equal elements"
@@ -171,7 +225,7 @@ fn all_equal_input_is_linear<S: Sorter>() {
 
 /// Sorted, reverse-sorted and all-equal input take one pass (at most
 /// `n - 1` comparisons, plus one to pick the direction).
-fn presorted_input_is_linear() {
+fn presorted_input_is_linear<S: Sorter>() {
     let n = 10_000u64;
     let inputs = [
         (0..n).collect::<Vec<_>>(),
@@ -179,21 +233,17 @@ fn presorted_input_is_linear() {
         vec![7; n as usize],
     ];
     for input in inputs {
-        let mut comparisons = 0u64;
-        let mut compare = |a: &u64, b: &u64| {
-            comparisons += 1;
+        let comparisons = AtomicU64::new(0);
+        let compare = |a: &u64, b: &u64| {
+            comparisons.fetch_add(1, SeqCst);
             a.cmp(b)
         };
         let mut v = input;
-        InPlace::sort::<_, _, DefaultConfig>(&mut v, &mut compare, 0);
+        S::sort::<_, _, DefaultConfig>(&mut v, &compare, 0);
         assert!(v.is_sorted());
+        let comparisons = comparisons.into_inner();
         assert!(comparisons <= n, "{comparisons} comparisons");
     }
-}
-
-#[test]
-fn inplace_presorted_input_is_linear() {
-    presorted_input_is_linear();
 }
 
 fn large_inputs<S: Sorter>() {
@@ -202,7 +252,7 @@ fn large_inputs<S: Sorter>() {
             let mut expected = input.clone();
             expected.sort_unstable();
             let mut v = input;
-            S::sort::<_, _, DefaultConfig>(&mut v, &mut u64::cmp, n as u64);
+            S::sort::<_, _, DefaultConfig>(&mut v, &u64::cmp, n as u64);
             assert_eq!(v, expected, "pattern {name}, n={n}");
         }
     }
@@ -210,28 +260,27 @@ fn large_inputs<S: Sorter>() {
 
 fn zero_sized_types_never_call_the_comparator<S: Sorter>() {
     let mut v = vec![(); 1000];
-    S::sort::<_, _, DefaultConfig>(&mut v, &mut |_, _| panic!("called"), 0);
+    S::sort::<_, _, DefaultConfig>(&mut v, &|_: &(), _: &()| panic!("called"), 0);
     assert_eq!(v.len(), 1000);
 }
 
-/// With the same seed, both implementations pick the same splitters, so one
-/// partitioning step must produce the same buckets: same sizes, same
-/// elements (in any order within a bucket), same splitters in between.
-fn same_partition_as_reference<C: Config>() {
-    for n in lengths().into_iter().filter(|&n| n > C::BASE_CASE_SIZE) {
+/// With the same seed, every implementation picks the same splitters, so
+/// one partitioning step must produce the same buckets as the reference:
+/// same sizes, same elements (in any order within a bucket), same splitters
+/// in between. `partition` runs one step of the implementation under test.
+fn same_partition_as_reference<S: Sorter, C: Config>(
+    partition: impl Fn(&mut [u64], &mut Rng) -> inplace::Partition,
+) {
+    for n in S::lengths::<C>()
+        .into_iter()
+        .filter(|&n| n > C::BASE_CASE_SIZE)
+    {
         for (name, input) in patterns(n, n as u64) {
             let seed = n as u64 ^ 0xd1ff;
             let expected =
                 reference::partition::<_, _, C>(input.clone(), &mut u64::cmp, &mut Rng::new(seed));
-
             let mut v = input;
-            let mut scratch = inplace::Scratch::new(block_size::<u64, C>());
-            let got = inplace::partition::<_, _, C>(
-                &mut v,
-                &mut u64::cmp,
-                &mut Rng::new(seed),
-                &mut scratch,
-            );
+            let got = partition(&mut v, &mut Rng::new(seed));
 
             let context = format!("pattern {name}, n={n}");
             assert_eq!(got.layout, expected.layout, "{context}");
@@ -260,6 +309,22 @@ fn same_partition_as_reference<C: Config>() {
     }
 }
 
+fn inplace_partition_matches_reference<C: Config>() {
+    same_partition_as_reference::<InPlace, C>(|v, rng| {
+        let mut scratch = inplace::Scratch::new(block_size::<u64, C>());
+        inplace::partition::<_, _, C>(v, &mut u64::cmp, rng, &mut scratch)
+    });
+}
+
+/// The parallel step, with 2 to 5 stripes (as many as the input allows).
+fn parallel_partition_matches_reference<C: Config>() {
+    for stripes in 2..=5 {
+        same_partition_as_reference::<Parallel, C>(|v, rng| {
+            pool().install(|| parallel::partition::<_, _, C>(v, &u64::cmp, rng, stripes))
+        });
+    }
+}
+
 /// Instantiates the suite for each implementation and configuration.
 macro_rules! suite {
     ($($module:ident => $config:ty,)*) => {
@@ -283,7 +348,19 @@ macro_rules! suite {
                 #[test] fn interior_mutation() { survives_interior_mutation::<InPlace, $config>() }
                 #[test] fn panics() { comparator_panics::<InPlace, $config>() }
                 #[test] fn garbage() { garbage_comparator::<InPlace, $config>() }
-                #[test] fn same_partition_as_reference() { super::super::same_partition_as_reference::<$config>() }
+                #[test] fn same_partition_as_reference() { inplace_partition_matches_reference::<$config>() }
+            })*
+        }
+        mod parallel_sort {
+            use super::*;
+            $(mod $module {
+                use super::*;
+                #[test] fn patterns() { sorts_patterns::<Parallel, $config>() }
+                #[test] fn tracked_with_duplicates() { sorts_tracked_with_duplicates::<Parallel, $config>() }
+                #[test] fn interior_mutation() { survives_interior_mutation::<Parallel, $config>() }
+                #[test] fn panics() { comparator_panics::<Parallel, $config>() }
+                #[test] fn garbage() { garbage_comparator::<Parallel, $config>() }
+                #[test] fn same_partition_as_reference() { parallel_partition_matches_reference::<$config>() }
             })*
         }
     };
@@ -315,6 +392,20 @@ macro_rules! per_impl {
 per_impl! {
     reference_only => Reference,
     inplace_only => InPlace,
+    parallel_only => Parallel,
+}
+
+// The reference sort has no presorted check.
+#[test]
+#[cfg_attr(miri, ignore = "too slow under Miri")]
+fn inplace_presorted_linear() {
+    presorted_input_is_linear::<InPlace>();
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "too slow under Miri")]
+fn parallel_presorted_linear() {
+    presorted_input_is_linear::<Parallel>();
 }
 
 #[test]
@@ -327,5 +418,21 @@ fn public_api() {
     crate::sort_unstable_by(&mut v, |a, b| b.cmp(a));
     assert!(v.iter().rev().is_sorted());
     crate::sort_unstable_by_key(&mut v, |x| x.abs());
+    assert!(v.windows(2).all(|w| w[0].abs() <= w[1].abs()));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "too slow under Miri")]
+fn public_parallel_api() {
+    let mut v: Vec<i64> = (0..1_000_000)
+        .map(|i| (i * 7919) % 100_003 - 50_000)
+        .collect();
+    let mut expected = v.clone();
+    expected.sort_unstable();
+    crate::par_sort_unstable(&mut v);
+    assert_eq!(v, expected);
+    crate::par_sort_unstable_by(&mut v, |a, b| b.cmp(a));
+    assert!(v.iter().rev().is_sorted());
+    crate::par_sort_unstable_by_key(&mut v, |x| x.abs());
     assert!(v.windows(2).all(|w| w[0].abs() <= w[1].abs()));
 }

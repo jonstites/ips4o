@@ -12,6 +12,7 @@ and writes CSV, plus a script that plots it.
 | `std_stable` | Rust's `sort_by` (driftsort): stable, so a different contract |
 | `cpp_ips4o` | the original C++ IPS⁴o, sequential (`--features cpp`) |
 | `cpp_std_sort` | C++ `std::sort` (`--features cpp`) |
+| `ips4o_par` | this crate's `par_sort_unstable_by` |
 | `rayon_par` | rayon's `par_sort_unstable_by` (parallel pdqsort) |
 | `cpp_ips4o_par` | the C++ IPS⁴o, parallel (`--features cpp`); its sorter and thread pool are created once and reused, like rayon's pool |
 

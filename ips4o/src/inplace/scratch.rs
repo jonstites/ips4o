@@ -5,17 +5,17 @@ use std::mem::MaybeUninit;
 
 pub(crate) struct Scratch<T> {
     /// Elements per block.
-    pub(super) block_size: usize,
+    pub(crate) block_size: usize,
     /// One block-sized buffer per bucket, back to back.
     buffers: Vec<MaybeUninit<T>>,
     /// Number of elements currently in each bucket's buffer.
-    pub(super) buffer_fill: Vec<usize>,
+    pub(crate) buffer_fill: Vec<usize>,
     /// Total elements classified into each bucket.
-    pub(super) bucket_sizes: Vec<usize>,
+    pub(crate) bucket_sizes: Vec<usize>,
     /// Bucket of each full block written back during local classification,
     /// indexed by block position. Recording ids means the later phases never
     /// re-classify, so they never call the comparator.
-    pub(super) block_ids: Vec<u16>,
+    pub(crate) block_ids: Vec<u16>,
     /// Two blocks for swapping during block permutation.
     swap: Vec<MaybeUninit<T>>,
     /// Holds the one block that may not fit at the end of the input.
@@ -37,7 +37,7 @@ impl<T> Scratch<T> {
 
     /// Sizes everything for a step with `num_buckets` buckets over `len`
     /// elements. All buffers must be empty.
-    pub(super) fn prepare(&mut self, num_buckets: usize, len: usize) {
+    pub(crate) fn prepare(&mut self, num_buckets: usize, len: usize) {
         let need = num_buckets * self.block_size;
         if self.buffers.len() < need {
             self.buffers.resize_with(need, MaybeUninit::uninit);
@@ -52,20 +52,20 @@ impl<T> Scratch<T> {
 
     /// Start of bucket `0`'s buffer; bucket `b`'s starts `b * block_size`
     /// elements later.
-    pub(super) fn buffers_ptr(&mut self) -> *mut T {
+    pub(crate) fn buffers_ptr(&mut self) -> *mut T {
         self.buffers.as_mut_ptr().cast()
     }
 
-    pub(super) fn swap_ptr(&mut self) -> *mut T {
+    pub(crate) fn swap_ptr(&mut self) -> *mut T {
         self.swap.as_mut_ptr().cast()
     }
 
-    pub(super) fn overflow_ptr(&mut self) -> *mut T {
+    pub(crate) fn overflow_ptr(&mut self) -> *mut T {
         self.overflow.as_mut_ptr().cast()
     }
 }
 
-fn uninit_vec<T>(len: usize) -> Vec<MaybeUninit<T>> {
+pub(crate) fn uninit_vec<T>(len: usize) -> Vec<MaybeUninit<T>> {
     let mut v = Vec::with_capacity(len);
     v.resize_with(len, MaybeUninit::uninit);
     v

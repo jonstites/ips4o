@@ -1,10 +1,10 @@
 //! Shared test fixtures: tiny configurations, input patterns, a drop-tracking
 //! element type, and panic helpers.
 
-use std::cell::Cell;
 use std::panic::{self, AssertUnwindSafe};
-use std::rc::Rc;
-use std::sync::Once;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
+use std::sync::{Arc, Mutex, Once};
 
 use crate::config::Config;
 use crate::util::Rng;
@@ -21,6 +21,7 @@ impl Config for TwoBuckets {
     const OVERSAMPLING_PERCENT: usize = 20;
     const EQUAL_BUCKETS_THRESHOLD: usize = 1;
     const BLOCK_BYTES: usize = 16;
+    const PAR_MIN_STRIPE: usize = 2;
 }
 
 pub(crate) struct FourBuckets;
@@ -31,6 +32,7 @@ impl Config for FourBuckets {
     const OVERSAMPLING_PERCENT: usize = 50;
     const EQUAL_BUCKETS_THRESHOLD: usize = 1;
     const BLOCK_BYTES: usize = 96;
+    const PAR_MIN_STRIPE: usize = 3;
 }
 
 pub(crate) struct EightBuckets;
@@ -41,6 +43,7 @@ impl Config for EightBuckets {
     const OVERSAMPLING_PERCENT: usize = 100;
     const EQUAL_BUCKETS_THRESHOLD: usize = 2;
     const BLOCK_BYTES: usize = 40;
+    const PAR_MIN_STRIPE: usize = 8;
 }
 
 /// Input lengths to test: everything small, plus a few around powers of two.
@@ -90,30 +93,31 @@ pub(crate) fn patterns(n: usize, seed: u64) -> Vec<(&'static str, Vec<u64>)> {
 
 /// Counts drops of [`Tracked`] values.
 #[derive(Clone)]
-pub(crate) struct DropCounter(Rc<Cell<usize>>);
+pub(crate) struct DropCounter(Arc<AtomicUsize>);
 
 impl DropCounter {
     pub(crate) fn new() -> Self {
-        DropCounter(Rc::new(Cell::new(0)))
+        DropCounter(Arc::new(AtomicUsize::new(0)))
     }
 
     pub(crate) fn get(&self) -> usize {
-        self.0.get()
+        self.0.load(SeqCst)
     }
 }
 
 /// An element that records its drop, remembers its original position, and
-/// has inline interior mutability (so it is not `Freeze`).
+/// has inline interior mutability (so it is not `Freeze`). It is `Send` and
+/// `Sync`, so the parallel sort can use it too.
 pub(crate) struct Tracked {
     pub(crate) key: u64,
     pub(crate) id: usize,
-    pub(crate) scratch: Cell<Option<Box<u64>>>,
+    pub(crate) scratch: Mutex<Option<Box<u64>>>,
     drops: DropCounter,
 }
 
 impl Drop for Tracked {
     fn drop(&mut self) {
-        self.drops.0.set(self.drops.0.get() + 1);
+        self.drops.0.fetch_add(1, SeqCst);
     }
 }
 
@@ -123,7 +127,7 @@ pub(crate) fn tracked(keys: &[u64], drops: &DropCounter) -> Vec<Tracked> {
         .map(|(id, &key)| Tracked {
             key,
             id,
-            scratch: Cell::new(Some(Box::new(key))),
+            scratch: Mutex::new(Some(Box::new(key))),
             drops: drops.clone(),
         })
         .collect()

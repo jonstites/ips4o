@@ -33,7 +33,7 @@ usage: benchmarks [options]
                      reverse_sorted, all_equal
   --sorters LIST     only these sorters (default: all): ips4o, std_unstable,
                      std_stable, cpp_ips4o, cpp_std_sort, and the parallel
-                     ones: rayon_par, cpp_ips4o_par
+                     ones: ips4o_par, rayon_par, cpp_ips4o_par
   --min-log N        smallest size 2^N (default: 10)
   --max-log N        largest size 2^N (default: 26)
   --log-step N       step between sizes, in powers of two (default: 2)
