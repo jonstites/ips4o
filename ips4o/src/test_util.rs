@@ -69,6 +69,16 @@ pub(crate) fn patterns(n: usize, seed: u64) -> Vec<(&'static str, Vec<u64>)> {
         ("all_equal", vec![7; n]),
         ("ascending", (0..n64).collect()),
         ("descending", (0..n64).rev().collect()),
+        (
+            "descending_with_duplicates",
+            (0..n64).rev().map(|i| i / 3).collect(),
+        ),
+        (
+            "ascending_then_one_out_of_place",
+            (0..n64)
+                .map(|i| if i + 1 == n64 { 0 } else { i + 1 })
+                .collect(),
+        ),
         ("sawtooth", (0..n64).map(|i| i % sqrt).collect()),
         ("organ_pipe", (0..n64).map(|i| i.min(n64 - i)).collect()),
         (

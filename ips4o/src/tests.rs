@@ -169,6 +169,33 @@ fn all_equal_input_is_linear<S: Sorter>() {
     );
 }
 
+/// Sorted, reverse-sorted and all-equal input take one pass (at most
+/// `n - 1` comparisons, plus one to pick the direction).
+fn presorted_input_is_linear() {
+    let n = 10_000u64;
+    let inputs = [
+        (0..n).collect::<Vec<_>>(),
+        (0..n).rev().collect(),
+        vec![7; n as usize],
+    ];
+    for input in inputs {
+        let mut comparisons = 0u64;
+        let mut compare = |a: &u64, b: &u64| {
+            comparisons += 1;
+            a.cmp(b)
+        };
+        let mut v = input;
+        InPlace::sort::<_, _, DefaultConfig>(&mut v, &mut compare, 0);
+        assert!(v.is_sorted());
+        assert!(comparisons <= n, "{comparisons} comparisons");
+    }
+}
+
+#[test]
+fn inplace_presorted_input_is_linear() {
+    presorted_input_is_linear();
+}
+
 fn large_inputs<S: Sorter>() {
     for n in [10_000, 100_000, 1 << 20] {
         for (name, input) in patterns(n, 42) {
