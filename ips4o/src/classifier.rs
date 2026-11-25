@@ -218,14 +218,14 @@ fn node_of_rank(rank: usize, log_buckets: u32) -> usize {
 /// to `v[..m]` in sorted order. The rest of the sample is left in `v[m..]` as
 /// ordinary elements. Decides whether to use equality buckets.
 ///
-/// Requires `v.len() > C::BASE_CASE_SIZE`.
+/// Requires `v.len() > base_case_size::<T, C>()`.
 pub(crate) fn select_splitters<T, F, C>(v: &mut [T], compare: &mut F, rng: &mut Rng) -> BucketLayout
 where
     F: FnMut(&T, &T) -> Ordering,
     C: Config,
 {
     let n = v.len();
-    let log_buckets = config::log_buckets::<C>(n);
+    let log_buckets = config::log_buckets::<T, C>(n);
     let m = (1usize << log_buckets) - 1;
     let step = config::sample_step::<C>(n, m);
     let sample_len = step * m;
