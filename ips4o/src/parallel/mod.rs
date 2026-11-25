@@ -38,6 +38,7 @@ use std::cmp::Ordering;
 use std::mem::{self, ManuallyDrop};
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
+use std::sync::Mutex;
 
 use rayon::prelude::*;
 
@@ -71,6 +72,37 @@ unsafe impl<T: Send> Send for SendPtr<T> {}
 // SAFETY: as above.
 unsafe impl<T: Send> Sync for SendPtr<T> {}
 
+/// Scratch space shared by all tasks of one parallel sort. A stripe or a
+/// sequentially sorted bucket takes a `Scratch` and gives it back when done,
+/// so buffers are allocated once per sort, not once per partitioning step
+/// (which cost tens of thousands of page faults per large sort).
+pub(crate) struct ScratchPool<T> {
+    block_size: usize,
+    free: Mutex<Vec<Scratch<T>>>,
+}
+
+impl<T> ScratchPool<T> {
+    pub(crate) fn new(block_size: usize) -> Self {
+        ScratchPool {
+            block_size,
+            free: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn take(&self) -> Scratch<T> {
+        let free = self.free.lock().unwrap_or_else(|e| e.into_inner()).pop();
+        free.unwrap_or_else(|| Scratch::new(self.block_size))
+    }
+
+    /// Returns `scratch`, whose buffers must be empty.
+    fn give(&self, scratch: Scratch<T>) {
+        self.free
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(scratch);
+    }
+}
+
 /// Sorts `v` in parallel on the current rayon pool.
 pub(crate) fn sort<T, F, C>(v: &mut [T], compare: &F, seed: u64)
 where
@@ -85,7 +117,8 @@ where
         return;
     }
     let depth_limit = 2 * v.len().ilog2();
-    recurse::<T, F, C>(v, compare, seed, depth_limit);
+    let pool = ScratchPool::new(block_size::<T, C>());
+    recurse::<T, F, C>(v, compare, seed, depth_limit, &pool);
 }
 
 /// Number of stripes to partition `len` elements with: one per thread, but
@@ -94,7 +127,7 @@ fn stripes_for<C: Config>(len: usize) -> usize {
     rayon::current_num_threads().min(len / C::PAR_MIN_STRIPE)
 }
 
-fn recurse<T, F, C>(v: &mut [T], compare: &F, seed: u64, depth_limit: u32)
+fn recurse<T, F, C>(v: &mut [T], compare: &F, seed: u64, depth_limit: u32, pool: &ScratchPool<T>)
 where
     T: Send + Sync,
     F: Fn(&T, &T) -> Ordering + Sync,
@@ -102,7 +135,15 @@ where
 {
     let stripes = stripes_for::<C>(v.len());
     if stripes < 2 || depth_limit == 0 || v.len() <= C::BASE_CASE_SIZE {
-        inplace::sort_unchecked::<T, _, C>(v, &mut |a, b| compare(a, b), seed, depth_limit);
+        let mut scratch = pool.take();
+        inplace::sort_unchecked_with::<T, _, C>(
+            v,
+            &mut |a, b| compare(a, b),
+            seed,
+            depth_limit,
+            &mut scratch,
+        );
+        pool.give(scratch);
         return;
     }
 
@@ -110,7 +151,7 @@ where
     let Partition {
         layout,
         bucket_starts,
-    } = partition::<T, F, C>(v, compare, &mut rng, stripes);
+    } = partition::<T, F, C>(v, compare, &mut rng, stripes, pool);
 
     // Cut `v` into the buckets that still need sorting. Splitters sit
     // between buckets, so bucket `b` is shifted right by the number of
@@ -134,9 +175,9 @@ where
         }
     }
 
-    buckets
-        .into_par_iter()
-        .for_each(|(bucket, seed)| recurse::<T, F, C>(bucket, compare, seed, depth_limit - 1));
+    buckets.into_par_iter().for_each(|(bucket, seed)| {
+        recurse::<T, F, C>(bucket, compare, seed, depth_limit - 1, pool)
+    });
 }
 
 /// One parallel partitioning step over at most `stripes` stripes (fewer if
@@ -147,6 +188,7 @@ pub(crate) fn partition<T, F, C>(
     compare: &F,
     rng: &mut Rng,
     stripes: usize,
+    pool: &ScratchPool<T>,
 ) -> Partition
 where
     T: Send + Sync,
@@ -188,7 +230,7 @@ where
     );
 
     // Phase 2: classify the stripes in parallel.
-    let mut scratches: Vec<Scratch<T>> = (0..stripes).map(|_| Scratch::new(bs)).collect();
+    let mut scratches: Vec<Scratch<T>> = (0..stripes).map(|_| pool.take()).collect();
     let mut written = vec![0; stripes];
     let mut done = vec![false; stripes];
     let classifier: &Classifier<T> = &splitters.classifier;
@@ -312,6 +354,10 @@ where
     };
     bomb.defuse();
 
+    // The buffers are empty again; keep them for the next step.
+    for scratch in scratches {
+        pool.give(scratch);
+    }
     Partition {
         layout,
         bucket_starts,

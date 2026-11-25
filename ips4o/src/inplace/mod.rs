@@ -71,9 +71,24 @@ where
     F: FnMut(&T, &T) -> Ordering,
     C: Config,
 {
-    let mut rng = Rng::new(seed);
     let mut scratch = Scratch::new(block_size::<T, C>());
-    recurse::<T, F, C>(v, compare, &mut rng, &mut scratch, depth_limit);
+    sort_unchecked_with::<T, F, C>(v, compare, seed, depth_limit, &mut scratch);
+}
+
+/// [`sort_unchecked`] with caller-provided scratch space (empty buffers,
+/// for `T` and `C`'s block size), which is left empty again on return.
+pub(crate) fn sort_unchecked_with<T, F, C>(
+    v: &mut [T],
+    compare: &mut F,
+    seed: u64,
+    depth_limit: u32,
+    scratch: &mut Scratch<T>,
+) where
+    F: FnMut(&T, &T) -> Ordering,
+    C: Config,
+{
+    let mut rng = Rng::new(seed);
+    recurse::<T, F, C>(v, compare, &mut rng, scratch, depth_limit);
 }
 
 /// Handles input that is already sorted, or sorted in reverse, in O(n).
