@@ -9,7 +9,7 @@
 use std::cmp::Ordering;
 
 use crate::config::small::{EightBuckets, FourBuckets, TwoBuckets};
-use crate::config::{Config, DefaultConfig, block_size};
+use crate::config::{Config, DefaultConfig, base_case_size, block_size};
 use crate::util::Rng;
 use crate::{inplace, parallel, reference};
 
@@ -63,7 +63,7 @@ pub fn check_partition(config: u8, input: &[u64], seed: u64, stripes: usize) -> 
 }
 
 fn check_partition_with<C: Config>(input: &[u64], seed: u64, stripes: usize) -> Result<(), String> {
-    if input.len() <= C::BASE_CASE_SIZE {
+    if input.len() <= base_case_size::<u64, C>() {
         return Ok(());
     }
     let expected =

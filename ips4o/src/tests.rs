@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 
-use crate::config::{Config, DefaultConfig, block_size};
+use crate::config::{Config, DefaultConfig, base_case_size, block_size};
 use crate::test_util::*;
 use crate::util::Rng;
 use crate::{inplace, parallel, reference};
@@ -273,7 +273,7 @@ fn same_partition_as_reference<S: Sorter, C: Config>(
 ) {
     for n in S::lengths::<C>()
         .into_iter()
-        .filter(|&n| n > C::BASE_CASE_SIZE)
+        .filter(|&n| n > base_case_size::<u64, C>())
     {
         for (name, input) in patterns(n, n as u64) {
             let seed = n as u64 ^ 0xd1ff;

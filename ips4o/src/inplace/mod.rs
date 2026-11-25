@@ -41,7 +41,7 @@ use std::mem::{self, ManuallyDrop};
 use std::ptr;
 
 use crate::classifier::{BucketLayout, Classifier, select_splitters};
-use crate::config::{Config, block_size};
+use crate::config::{Config, base_case_size, block_size};
 use crate::util::{AbortOnUnwind, Rng, base_case_sort, is_less};
 
 pub(crate) use scratch::{Scratch, uninit_vec};
@@ -125,7 +125,7 @@ fn recurse<T, F, C>(
     F: FnMut(&T, &T) -> Ordering,
     C: Config,
 {
-    if v.len() <= C::BASE_CASE_SIZE || depth_limit == 0 {
+    if v.len() <= base_case_size::<T, C>() || depth_limit == 0 {
         base_case_sort(v, compare);
         return;
     }
@@ -158,7 +158,7 @@ pub(crate) struct Partition {
 }
 
 /// Partitions `v` into buckets with splitters in between. Requires
-/// `v.len() > C::BASE_CASE_SIZE`.
+/// `v.len() > base_case_size::<T, C>()`.
 pub(crate) fn partition<T, F, C>(
     v: &mut [T],
     compare: &mut F,

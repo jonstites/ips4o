@@ -8,13 +8,18 @@
 pub(crate) trait Config {
     /// log2 of the maximum number of buckets per partitioning step.
     const LOG_MAX_BUCKETS: u32;
-    /// Slices with at most this many elements are handed to
-    /// `slice::sort_unstable_by` instead of being partitioned.
-    const BASE_CASE_SIZE: usize;
-    /// Desired bucket size. The number of buckets is chosen so that buckets
-    /// shrink to about this size within one or two partitioning levels.
-    /// Must be at most `BASE_CASE_SIZE`.
-    const BUCKET_TARGET_SIZE: usize;
+    /// The base case: slices of at most `base_case_size::<T, C>()` elements,
+    /// that is `BASE_CASE_BYTES / size_of::<T>()` clamped to
+    /// `MIN_BASE_CASE..=MAX_BASE_CASE`, are handed to
+    /// `slice::sort_unstable_by` instead of being partitioned. Buckets aim
+    /// for half that size.
+    ///
+    /// Sized in bytes because the best cutoff depends on element size: std's
+    /// sort moves elements around a lot, which is cheap for small elements
+    /// and costly for large ones, while partitioning moves whole blocks.
+    const BASE_CASE_BYTES: usize;
+    const MIN_BASE_CASE: usize;
+    const MAX_BASE_CASE: usize;
     /// Oversampling, in percent per bit of input size: each splitter is
     /// chosen from `max(1, OVERSAMPLING_PERCENT * log2(n) / 100)` samples.
     const OVERSAMPLING_PERCENT: usize;
@@ -33,16 +38,18 @@ pub(crate) trait Config {
     const PAR_MIN_STRIPE: usize;
 }
 
-/// The defaults. These are the C++ implementation's values (`kBaseCaseSize`
-/// is our `BUCKET_TARGET_SIZE`, and C++ recurses down to `2 * kBaseCaseSize`).
-/// They are not tuned yet; with std's sort as the base case, a larger
-/// `BASE_CASE_SIZE` may be better.
+/// The defaults. Bucket counts, oversampling and block size follow the C++
+/// implementation. The base case is much larger than its 32 elements,
+/// because our base case is std's sort rather than an insertion sort:
+/// 4 KiB of elements, 32 to 512 of them (512 for `u64`, about 170 for
+/// `String`, 40 for 100-byte records). Measured on one machine (Zen 5).
 pub(crate) struct DefaultConfig;
 
 impl Config for DefaultConfig {
     const LOG_MAX_BUCKETS: u32 = 8;
-    const BASE_CASE_SIZE: usize = 32;
-    const BUCKET_TARGET_SIZE: usize = 16;
+    const BASE_CASE_BYTES: usize = 4096;
+    const MIN_BASE_CASE: usize = 32;
+    const MAX_BASE_CASE: usize = 512;
     const OVERSAMPLING_PERCENT: usize = 20;
     const EQUAL_BUCKETS_THRESHOLD: usize = 5;
     const BLOCK_BYTES: usize = 2048;
@@ -53,10 +60,20 @@ impl Config for DefaultConfig {
 pub(crate) const fn validate<C: Config>() {
     // At most 2^16 - 1 buckets (with equality buckets), so ids fit in a u16.
     assert!(C::LOG_MAX_BUCKETS >= 1 && C::LOG_MAX_BUCKETS <= 15);
-    assert!(C::BUCKET_TARGET_SIZE >= 1);
-    assert!(C::BASE_CASE_SIZE >= C::BUCKET_TARGET_SIZE);
+    assert!(C::MIN_BASE_CASE >= 1);
+    assert!(C::MAX_BASE_CASE >= C::MIN_BASE_CASE);
     assert!(C::EQUAL_BUCKETS_THRESHOLD >= 1);
     assert!(C::PAR_MIN_STRIPE >= 1);
+}
+
+/// Slices of at most this many elements go to the base case sort.
+pub(crate) fn base_case_size<T, C: Config>() -> usize {
+    (C::BASE_CASE_BYTES / size_of::<T>().max(1)).clamp(C::MIN_BASE_CASE, C::MAX_BASE_CASE)
+}
+
+/// The bucket size that partitioning aims for: half the base case.
+pub(crate) fn bucket_target_size<T, C: Config>() -> usize {
+    (base_case_size::<T, C>() / 2).max(1)
 }
 
 /// Number of elements per block.
@@ -66,16 +83,16 @@ pub(crate) fn block_size<T, C: Config>() -> usize {
 
 /// Chooses `L` (the step partitions into `2^L` buckets) for `n` elements.
 ///
-/// Like the C++ implementation, this aims for buckets that reach
-/// `BUCKET_TARGET_SIZE` after one level (small `n`) or two levels (medium
+/// Like the C++ implementation, this aims for buckets that reach the
+/// bucket target size after one level (small `n`) or two levels (medium
 /// `n`), and otherwise uses the maximum.
 ///
-/// Requires `n > C::BASE_CASE_SIZE`.
-pub(crate) fn log_buckets<C: Config>(n: usize) -> u32 {
+/// Requires `n > base_case_size::<T, C>()`.
+pub(crate) fn log_buckets<T, C: Config>(n: usize) -> u32 {
     const { validate::<C>() };
-    debug_assert!(n > C::BASE_CASE_SIZE);
+    debug_assert!(n > base_case_size::<T, C>());
     let max = C::LOG_MAX_BUCKETS;
-    let lg = (n / C::BUCKET_TARGET_SIZE).ilog2();
+    let lg = (n / bucket_target_size::<T, C>()).ilog2();
     let l = if lg <= max {
         lg
     } else if lg <= 2 * max {
@@ -105,8 +122,9 @@ pub(crate) mod small {
     pub struct TwoBuckets;
     impl Config for TwoBuckets {
         const LOG_MAX_BUCKETS: u32 = 1;
-        const BASE_CASE_SIZE: usize = 1;
-        const BUCKET_TARGET_SIZE: usize = 1;
+        const BASE_CASE_BYTES: usize = 0;
+        const MIN_BASE_CASE: usize = 1;
+        const MAX_BASE_CASE: usize = 1;
         const OVERSAMPLING_PERCENT: usize = 20;
         const EQUAL_BUCKETS_THRESHOLD: usize = 1;
         const BLOCK_BYTES: usize = 16;
@@ -116,8 +134,9 @@ pub(crate) mod small {
     pub struct FourBuckets;
     impl Config for FourBuckets {
         const LOG_MAX_BUCKETS: u32 = 2;
-        const BASE_CASE_SIZE: usize = 2;
-        const BUCKET_TARGET_SIZE: usize = 1;
+        const BASE_CASE_BYTES: usize = 0;
+        const MIN_BASE_CASE: usize = 2;
+        const MAX_BASE_CASE: usize = 2;
         const OVERSAMPLING_PERCENT: usize = 50;
         const EQUAL_BUCKETS_THRESHOLD: usize = 1;
         const BLOCK_BYTES: usize = 96;
@@ -127,8 +146,9 @@ pub(crate) mod small {
     pub struct EightBuckets;
     impl Config for EightBuckets {
         const LOG_MAX_BUCKETS: u32 = 3;
-        const BASE_CASE_SIZE: usize = 4;
-        const BUCKET_TARGET_SIZE: usize = 2;
+        const BASE_CASE_BYTES: usize = 0;
+        const MIN_BASE_CASE: usize = 4;
+        const MAX_BASE_CASE: usize = 4;
         const OVERSAMPLING_PERCENT: usize = 100;
         const EQUAL_BUCKETS_THRESHOLD: usize = 2;
         const BLOCK_BYTES: usize = 40;
@@ -141,24 +161,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn base_case_follows_element_size() {
+        type C = DefaultConfig;
+        assert_eq!(base_case_size::<u8, C>(), 512);
+        assert_eq!(base_case_size::<u64, C>(), 512);
+        assert_eq!(base_case_size::<String, C>(), 4096 / 24);
+        assert_eq!(base_case_size::<[u8; 100], C>(), 40);
+        assert_eq!(base_case_size::<[u8; 1000], C>(), 32);
+        assert_eq!(bucket_target_size::<u64, C>(), 256);
+    }
+
+    #[test]
     fn default_log_buckets() {
         type C = DefaultConfig;
-        // One level: buckets end up near the base case.
-        assert_eq!(log_buckets::<C>(33), 1);
-        assert_eq!(log_buckets::<C>(16 * 16), 4);
-        assert_eq!(log_buckets::<C>(16 * 256), 8);
+        // u64: base case 512, bucket target 256.
+        // One level: buckets end up near the target.
+        assert_eq!(log_buckets::<u64, C>(513), 1);
+        assert_eq!(log_buckets::<u64, C>(256 * 16), 4);
+        assert_eq!(log_buckets::<u64, C>(256 * 256), 8);
         // Two levels.
-        assert_eq!(log_buckets::<C>(16 * 512), 5);
-        assert_eq!(log_buckets::<C>(16 * 256 * 256), 8);
+        assert_eq!(log_buckets::<u64, C>(256 * 512), 5);
+        assert_eq!(log_buckets::<u64, C>(256 * 256 * 256), 8);
         // Saturated.
-        assert_eq!(log_buckets::<C>(usize::MAX), 8);
+        assert_eq!(log_buckets::<u64, C>(usize::MAX), 8);
     }
 
     #[test]
     fn sample_fits() {
         type C = DefaultConfig;
-        for n in [33, 100, 1000, 1 << 20, usize::MAX / 2] {
-            let m = (1usize << log_buckets::<C>(n)) - 1;
+        for n in [513, 1000, 1 << 20, usize::MAX / 2] {
+            let m = (1usize << log_buckets::<u64, C>(n)) - 1;
             let step = sample_step::<C>(n, m);
             assert!(step >= 1 && step * m <= n, "n={n} m={m} step={step}");
         }

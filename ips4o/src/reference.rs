@@ -14,7 +14,7 @@ use std::cmp::Ordering;
 use std::mem;
 
 use crate::classifier::{BucketLayout, Classifier, select_splitters};
-use crate::config::{Config, DefaultConfig};
+use crate::config::{Config, DefaultConfig, base_case_size};
 use crate::util::{Rng, base_case_sort, is_less, random_seed};
 
 /// Sorts `v` (unstable), returning the sorted vector.
@@ -63,7 +63,7 @@ where
     F: FnMut(&T, &T) -> Ordering,
     C: Config,
 {
-    if v.len() <= C::BASE_CASE_SIZE || depth_limit == 0 {
+    if v.len() <= base_case_size::<T, C>() || depth_limit == 0 {
         base_case_sort(&mut v, compare);
         return v;
     }
@@ -101,7 +101,7 @@ pub(crate) struct Partition<T> {
     pub(crate) splitters: Vec<T>,
 }
 
-/// One partitioning step. Requires `v.len() > C::BASE_CASE_SIZE`.
+/// One partitioning step. Requires `v.len() > base_case_size::<T, C>()`.
 pub(crate) fn partition<T, F, C>(mut v: Vec<T>, compare: &mut F, rng: &mut Rng) -> Partition<T>
 where
     F: FnMut(&T, &T) -> Ordering,

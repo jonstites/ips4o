@@ -43,7 +43,7 @@ use std::sync::Mutex;
 use rayon::prelude::*;
 
 use crate::classifier::{Classifier, select_splitters};
-use crate::config::{Config, block_size};
+use crate::config::{Config, base_case_size, block_size};
 use crate::inplace::cleanup::reinsert_splitters;
 use crate::inplace::{self, Partition, Scratch, SplitterGuard, local};
 use crate::util::{AbortOnUnwind, Rng};
@@ -134,7 +134,7 @@ where
     C: Config,
 {
     let stripes = stripes_for::<C>(v.len());
-    if stripes < 2 || depth_limit == 0 || v.len() <= C::BASE_CASE_SIZE {
+    if stripes < 2 || depth_limit == 0 || v.len() <= base_case_size::<T, C>() {
         let mut scratch = pool.take();
         inplace::sort_unchecked_with::<T, _, C>(
             v,
