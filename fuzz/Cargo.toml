@@ -1,0 +1,39 @@
+[package]
+name = "ips4o-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+ips4o = { path = "../ips4o", features = ["fuzzing"] }
+libfuzzer-sys = "0.4"
+rayon = "1"
+
+# Its own workspace, as cargo-fuzz expects (the root excludes it).
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "sort"
+path = "fuzz_targets/sort.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "chaos"
+path = "fuzz_targets/chaos.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "partition"
+path = "fuzz_targets/partition.rs"
+test = false
+doc = false
+bench = false

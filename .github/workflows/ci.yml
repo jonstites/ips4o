@@ -97,3 +97,21 @@ jobs:
           cargo run -p benchmarks --release --features cpp --
           --types u64,f64,pair,record100,string --max-log 14
           --min-time 0 --min-reps 1 --max-reps 1 > /dev/null
+
+  fuzz:
+    name: Fuzz (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --locked
+      # A minute per target: catches targets that stop building and bugs the
+      # fuzzer finds quickly. Longer runs are done locally.
+      - run: |
+          for target in sort partition chaos; do
+            cargo fuzz run "$target" -- -max_total_time=60
+          done
+        working-directory: fuzz

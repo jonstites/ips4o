@@ -6,45 +6,9 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::{Arc, Mutex, Once};
 
-use crate::config::Config;
 use crate::util::Rng;
 
-/// Tiny configurations. Small inputs drive these through many levels of
-/// partitioning, which keeps the tests (and Miri) fast. Block sizes vary:
-/// `u64` gets 2, 12 and 5 elements per block; `Tracked` (32 bytes) gets 1, 3
-/// and 1.
-pub(crate) struct TwoBuckets;
-impl Config for TwoBuckets {
-    const LOG_MAX_BUCKETS: u32 = 1;
-    const BASE_CASE_SIZE: usize = 1;
-    const BUCKET_TARGET_SIZE: usize = 1;
-    const OVERSAMPLING_PERCENT: usize = 20;
-    const EQUAL_BUCKETS_THRESHOLD: usize = 1;
-    const BLOCK_BYTES: usize = 16;
-    const PAR_MIN_STRIPE: usize = 2;
-}
-
-pub(crate) struct FourBuckets;
-impl Config for FourBuckets {
-    const LOG_MAX_BUCKETS: u32 = 2;
-    const BASE_CASE_SIZE: usize = 2;
-    const BUCKET_TARGET_SIZE: usize = 1;
-    const OVERSAMPLING_PERCENT: usize = 50;
-    const EQUAL_BUCKETS_THRESHOLD: usize = 1;
-    const BLOCK_BYTES: usize = 96;
-    const PAR_MIN_STRIPE: usize = 3;
-}
-
-pub(crate) struct EightBuckets;
-impl Config for EightBuckets {
-    const LOG_MAX_BUCKETS: u32 = 3;
-    const BASE_CASE_SIZE: usize = 4;
-    const BUCKET_TARGET_SIZE: usize = 2;
-    const OVERSAMPLING_PERCENT: usize = 100;
-    const EQUAL_BUCKETS_THRESHOLD: usize = 2;
-    const BLOCK_BYTES: usize = 40;
-    const PAR_MIN_STRIPE: usize = 8;
-}
+pub(crate) use crate::config::small::{EightBuckets, FourBuckets, TwoBuckets};
 
 /// Input lengths to test: everything small, plus a few around powers of two.
 pub(crate) fn lengths() -> Vec<usize> {

@@ -28,6 +28,9 @@ use std::cmp::Ordering;
 
 mod classifier;
 mod config;
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzzing;
 mod inplace;
 #[cfg(feature = "parallel")]
 mod parallel;

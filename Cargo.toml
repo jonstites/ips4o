@@ -1,3 +1,5 @@
 [workspace]
 resolver = "3"
 members = ["ips4o", "benchmarks"]
+# cargo-fuzz builds `fuzz/` as its own workspace.
+exclude = ["fuzz"]
